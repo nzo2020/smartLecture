@@ -1,5 +1,11 @@
 package com.example.smartlecture;
 
+import androidx.annotation.NonNull;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,13 +16,15 @@ public class User {
     private int totalLectures;
     private int completedTasks;
 
-    // אתחול הרשימה כדי למנוע NullPointerException
-    private List<LearningEvent> learningEvents = new ArrayList<>();
+    private List<Lecture> learningEvents = new ArrayList<>();
 
-    // בנאי ריק - חובה עבור Firebase
+    public interface OnEventsFetchListener {
+        void onEventsFetched(List<Lecture> events);
+        void onError(String error);
+    }
+
     public User() {}
 
-    // בנאי מלא (מקל על יצירת משתמש חדש בהרשמה)
     public User(String userID, String email, String name) {
         this.userID = userID;
         this.email = email;
@@ -25,14 +33,41 @@ public class User {
         this.completedTasks = 0;
     }
 
-    // פעולת העזר שציינת ב-UML
-    public void fetchEvents() {
-        // הערה: Firebase עובד בצורה אסינכרונית.
-        // הקוד כאן בד"כ יכלול מאזין (ValueEventListener)
+    public void fetchEvents(OnEventsFetchListener listener) {
+        if (userID == null || userID.isEmpty()) {
+            if (listener != null) listener.onError("User ID is missing");
+            return;
+        }
+
+        DatabaseReference ref = FirebaseDatabase.getInstance()
+                .getReference("Lectures/pub_false/" + userID);
+
+        ref.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                learningEvents.clear();
+                for (DataSnapshot data : snapshot.getChildren()) {
+                    Lecture lecture = data.getValue(Lecture.class);
+                    if (lecture != null) {
+                        learningEvents.add(lecture);
+                    }
+                }
+                totalLectures = learningEvents.size();
+
+                if (listener != null) {
+                    listener.onEventsFetched(learningEvents);
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                if (listener != null) {
+                    listener.onError(error.getMessage());
+                }
+            }
+        });
     }
 
-    // Getters ו-Setters חיוניים ל-Firebase
-    // בלעדיהם Firebase לא ידע "להזריק" את הנתונים לשדות
 
     public String getUserID() { return userID; }
     public void setUserID(String userID) { this.userID = userID; }
@@ -49,6 +84,6 @@ public class User {
     public int getCompletedTasks() { return completedTasks; }
     public void setCompletedTasks(int completedTasks) { this.completedTasks = completedTasks; }
 
-    public List<LearningEvent> getLearningEvents() { return learningEvents; }
-    public void setLearningEvents(List<LearningEvent> learningEvents) { this.learningEvents = learningEvents; }
+    public List<Lecture> getLearningEvents() { return learningEvents; }
+    public void setLearningEvents(List<Lecture> learningEvents) { this.learningEvents = learningEvents; }
 }

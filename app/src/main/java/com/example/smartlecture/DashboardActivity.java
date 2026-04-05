@@ -18,6 +18,8 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.List;
+
 public class DashboardActivity extends AppCompatActivity {
 
     private TextView tvWelcome, tvStats;
@@ -32,7 +34,7 @@ public class DashboardActivity extends AppCompatActivity {
 
         initViews();
         setupClickListeners();
-        loadUserData(); // טעינת השם והמונים מה-Database
+        loadUserData();
     }
 
     private void initViews() {
@@ -51,7 +53,7 @@ public class DashboardActivity extends AppCompatActivity {
         if (refAuth.getCurrentUser() != null) {
             String uid = refAuth.getCurrentUser().getUid();
 
-            // משיכת נתונים מהנתיב users/uid לפי המבנה שלך
+            // שלב 1: משיכת אובייקט המשתמש הבסיסי
             refUsers.child(uid).addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
@@ -59,15 +61,27 @@ public class DashboardActivity extends AppCompatActivity {
                         User user = snapshot.getValue(User.class);
                         if (user != null) {
                             tvWelcome.setText("Hello, " + user.getName() + " 👋");
-                            // עדכון הסטטיסטיקה (למשל בכותרת המשנית או בטקסט אחר)
-                            tvStats.setText("Stats: " + user.getTotalLectures() + " Lectures");
+
+                            // שלב 2: שימוש בפעולה החדשה בתוך מחלקת User למשיכת ההרצאות
+                            user.fetchEvents(new User.OnEventsFetchListener() {
+                                @Override
+                                public void onEventsFetched(List<Lecture> events) {
+                                    // עדכון ה-UI עם כמות ההרצאות האמיתית שנמשכה מהענן
+                                    tvStats.setText("Stats: " + events.size() + " Lectures Saved");
+                                }
+
+                                @Override
+                                public void onError(String error) {
+                                    tvStats.setText("Stats: Error loading count");
+                                }
+                            });
                         }
                     }
                 }
 
                 @Override
                 public void onCancelled(@NonNull DatabaseError error) {
-                    Toast.makeText(DashboardActivity.this, "Error loading data", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(DashboardActivity.this, "Error loading user profile", Toast.LENGTH_SHORT).show();
                 }
             });
         }
@@ -85,7 +99,6 @@ public class DashboardActivity extends AppCompatActivity {
 
     private void logoutUser() {
         refAuth.signOut();
-        // ניקוי SharedPreferences כדי שלא ייכנס אוטומטית בפעם הבאה
         SharedPreferences sharedPref = getSharedPreferences("USER_SETTINGS", MODE_PRIVATE);
         sharedPref.edit().putBoolean("stayConnect", false).apply();
 

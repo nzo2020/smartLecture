@@ -19,7 +19,6 @@ public abstract class LearningEvent {
         this.userID = userID;
     }
 
-    // הפעולה היא abstract - כל מחלקה יורשת תממש אותה אחרת
     public abstract long getDueDate();
 
     // Getters & Setters

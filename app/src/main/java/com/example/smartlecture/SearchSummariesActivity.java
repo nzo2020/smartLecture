@@ -1,6 +1,7 @@
 package com.example.smartlecture;
 
 import static com.example.smartlecture.FBRef.refAuth;
+import static com.example.smartlecture.FBRef.refUsers;
 
 import android.os.Bundle;
 import android.text.Editable;
@@ -18,8 +19,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
@@ -36,7 +35,7 @@ public class SearchSummariesActivity extends AppCompatActivity {
     private List<String> lecturersNames;    // שמות המרצים עבור ה-Spinner
 
     private ArrayAdapter<String> spinnerAdapter;
-    private ArrayAdapter<String> listAdapter; // אדפטר פשוט להצגת שמות ההרצאות ברשימה
+    private ArrayAdapter<String> listAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,7 +43,7 @@ public class SearchSummariesActivity extends AppCompatActivity {
         setContentView(R.layout.activity_search_summaries);
 
         initViews();
-        loadAllLectures();
+        setupUserAndLoadLectures(); // שימוש במחלקת User לטעינה
 
         // מאזין לשינוי בטקסט החיפוש
         etSearchByTitle.addTextChangedListener(new TextWatcher() {
@@ -79,66 +78,85 @@ public class SearchSummariesActivity extends AppCompatActivity {
         allLectures = new ArrayList<>();
         filteredLectures = new ArrayList<>();
         lecturersNames = new ArrayList<>();
-        lecturersNames.add("All Lecturers"); // אופציה ראשונה ב-Spinner
+        lecturersNames.add("All Lecturers");
 
         spinnerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lecturersNames);
         spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerLecturer.setAdapter(spinnerAdapter);
 
-        // אדפטר לרשימת התוצאות (מציג כותרת ומרצה)
         listAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         lvSearchResults.setAdapter(listAdapter);
     }
 
-    private void loadAllLectures() {
-        String uid = refAuth.getCurrentUser().getUid();
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference("Lectures/pub_false/" + uid);
+    private void setupUserAndLoadLectures() {
+        if (refAuth.getCurrentUser() != null) {
+            String uid = refAuth.getCurrentUser().getUid();
 
-        ref.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                allLectures.clear();
-                lecturersNames.clear();
-                lecturersNames.add("All Lecturers");
+            // טעינת אובייקט המשתמש מ-Firebase
+            refUsers.child(uid).addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    User user = snapshot.getValue(User.class);
+                    if (user != null) {
+                        // שימוש בפעולה fetchEvents של מחלקת User
+                        user.fetchEvents(new User.OnEventsFetchListener() {
+                            @Override
+                            public void onEventsFetched(List<Lecture> events) {
+                                allLectures.clear();
+                                allLectures.addAll(events);
 
-                for (DataSnapshot data : snapshot.getChildren()) {
-                    Lecture lecture = data.getValue(Lecture.class);
-                    if (lecture != null) {
-                        allLectures.add(lecture);
-                        // הוספת שם המרצה ל-Spinner אם הוא לא קיים כבר
-                        if (!lecturersNames.contains(lecture.getLecturer())) {
-                            lecturersNames.add(lecture.getLecturer());
-                        }
+                                // עדכון שמות המרצים ב-Spinner
+                                updateLecturersSpinner();
+
+                                // הרצת הסינון הראשוני להצגת הנתונים
+                                performFiltering();
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                Toast.makeText(SearchSummariesActivity.this, "Error: " + error, Toast.LENGTH_SHORT).show();
+                            }
+                        });
                     }
                 }
-                spinnerAdapter.notifyDataSetChanged();
-                performFiltering(); // סינון ראשוני
-            }
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(SearchSummariesActivity.this, "Error loading lectures", Toast.LENGTH_SHORT).show();
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {}
+            });
+        }
+    }
+
+    private void updateLecturersSpinner() {
+        lecturersNames.clear();
+        lecturersNames.add("All Lecturers");
+        for (Lecture lecture : allLectures) {
+            if (lecture.getLecturer() != null && !lecturersNames.contains(lecture.getLecturer())) {
+                lecturersNames.add(lecture.getLecturer());
             }
-        });
+        }
+        spinnerAdapter.notifyDataSetChanged();
     }
 
     private void performFiltering() {
         String query = etSearchByTitle.getText().toString().toLowerCase().trim();
-        String selectedLecturer = spinnerLecturer.getSelectedItem().toString();
+        String selectedLecturer = spinnerLecturer.getSelectedItem() != null ?
+                spinnerLecturer.getSelectedItem().toString() : "All Lecturers";
 
         filteredLectures.clear();
         List<String> displayStrings = new ArrayList<>();
 
         for (Lecture lecture : allLectures) {
             boolean matchesLecturer = selectedLecturer.equals("All Lecturers") ||
-                    lecture.getLecturer().equals(selectedLecturer);
+                    (lecture.getLecturer() != null && lecture.getLecturer().equals(selectedLecturer));
 
-            // שימוש ב-ISearchable: בודק אם השאילתה קיימת בכותרת או בסיכום
             boolean matchesQuery = query.isEmpty();
-            for (String field : lecture.getSearchableFields()) {
-                if (field != null && field.toLowerCase().contains(query)) {
-                    matchesQuery = true;
-                    break;
+            // שימוש בממשק ISearchable כפי שהגדרת
+            if (!query.isEmpty() && lecture.getSearchableFields() != null) {
+                for (String field : lecture.getSearchableFields()) {
+                    if (field != null && field.toLowerCase().contains(query)) {
+                        matchesQuery = true;
+                        break;
+                    }
                 }
             }
 

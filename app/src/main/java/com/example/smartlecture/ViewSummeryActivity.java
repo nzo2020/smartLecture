@@ -1,6 +1,7 @@
 package com.example.smartlecture;
 
 import static com.example.smartlecture.FBRef.refAuth;
+import static com.example.smartlecture.FBRef.refUsers;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -17,8 +18,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
@@ -37,14 +36,13 @@ public class ViewSummeryActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_view_summery); // וודאי שזה שם ה-XML שלך
+        setContentView(R.layout.activity_view_summery);
 
         initViews();
-        loadLecturesFromFirebase();
+        loadUserAndLectures(); // שימוש במחלקת User לטעינה מסודרת
 
         btnBackHome.setOnClickListener(v -> finish());
 
-        // מאזין לבחירה ב-Spinner
         spSummarySelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -55,7 +53,6 @@ public class ViewSummeryActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        // כפתור שיתוף
         btnShare.setOnClickListener(v -> shareSummary());
     }
 
@@ -69,39 +66,49 @@ public class ViewSummeryActivity extends AppCompatActivity {
         lectureList = new ArrayList<>();
         lectureTitles = new ArrayList<>();
 
-        // הגדרת האדפטר ל-Spinner
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lectureTitles);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spSummarySelector.setAdapter(adapter);
     }
 
-    private void loadLecturesFromFirebase() {
-        String uid = refAuth.getCurrentUser().getUid();
-        // נתיב להרצאות הפרטיות של המשתמש
-        DatabaseReference refPrivate = FirebaseDatabase.getInstance().getReference("Lectures/pub_false/" + uid);
+    private void loadUserAndLectures() {
+        if (refAuth.getCurrentUser() != null) {
+            String uid = refAuth.getCurrentUser().getUid();
 
-        refPrivate.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                lectureList.clear();
-                lectureTitles.clear();
+            // טעינת אובייקט המשתמש
+            refUsers.child(uid).addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    User user = snapshot.getValue(User.class);
+                    if (user != null) {
+                        // שימוש בפעולה fetchEvents מהמחלקה User
+                        user.fetchEvents(new User.OnEventsFetchListener() {
+                            @Override
+                            public void onEventsFetched(List<Lecture> events) {
+                                lectureList.clear();
+                                lectureTitles.clear();
 
-                for (DataSnapshot data : snapshot.getChildren()) {
-                    Lecture lecture = data.getValue(Lecture.class);
-                    if (lecture != null) {
-                        lectureList.add(lecture);
-                        // מציג ב-Spinner את כותרת ההרצאה או שם המרצה
-                        lectureTitles.add(lecture.getTitle() != null ? lecture.getTitle() : lecture.getLecturer());
+                                lectureList.addAll(events);
+                                for (Lecture lecture : events) {
+                                    // הוספת כותרת או שם מרצה ל-Spinner
+                                    lectureTitles.add(lecture.getTitle() != null ?
+                                            lecture.getTitle() : lecture.getLecturer());
+                                }
+                                adapter.notifyDataSetChanged();
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                Toast.makeText(ViewSummeryActivity.this, "Error: " + error, Toast.LENGTH_SHORT).show();
+                            }
+                        });
                     }
                 }
-                adapter.notifyDataSetChanged();
-            }
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(ViewSummeryActivity.this, "Error loading data", Toast.LENGTH_SHORT).show();
-            }
-        });
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {}
+            });
+        }
     }
 
     private void displayLectureDetails(int position) {
@@ -110,8 +117,7 @@ public class ViewSummeryActivity extends AppCompatActivity {
         Lecture selected = lectureList.get(position);
         tvSummaryContent.setText(selected.getSummaryText());
 
-        // הצגת לינק להקלטה אם קיים
-        if (selected.getAudioURL() != null) {
+        if (selected.getAudioURL() != null && !selected.getAudioURL().isEmpty()) {
             tvLinks.setText("Audio Record: " + selected.getAudioURL());
         } else {
             tvLinks.setText("No recording available");

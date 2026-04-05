@@ -24,16 +24,14 @@ public class Lecture extends LearningEvent implements IRecordable, ISearchable {
         this.status = "draft";
     }
 
-    // מימוש הפעולה מהמחלקה המופשטת LearningEvent
     @Override
     public long getDueDate() {
         return timestamp; // בהרצאה, מועד האירוע הוא זמן השיעור עצמו
     }
 
-    // מימוש הממשק IRecordable
     @Override
     public void startRecording() {
-        // כאן תבוא הלוגיקה של MediaRecorder
+        this.status = "processing";
     }
 
     // מימוש הממשק ISearchable
