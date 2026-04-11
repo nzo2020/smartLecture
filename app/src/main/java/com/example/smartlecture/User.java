@@ -33,37 +33,44 @@ public class User {
         this.completedTasks = 0;
     }
 
-    public void fetchEvents(OnEventsFetchListener listener) {
-        if (userID == null || userID.isEmpty()) {
-            if (listener != null) listener.onError("User ID is missing");
+    public void fetchEvents(final OnEventsFetchListener listener) {
+        if (this.userID == null || this.userID.isEmpty()) {
+            listener.onError("User ID is missing");
             return;
         }
 
+        // נתיב: Lectures/pub_false/user_id_123
         DatabaseReference ref = FirebaseDatabase.getInstance()
-                .getReference("Lectures/pub_false/" + userID);
+                .getReference("Lectures/pub_false/" + this.userID);
 
-        ref.addValueEventListener(new ValueEventListener() {
+        ref.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                learningEvents.clear();
-                for (DataSnapshot data : snapshot.getChildren()) {
-                    Lecture lecture = data.getValue(Lecture.class);
-                    if (lecture != null) {
-                        learningEvents.add(lecture);
+                List<Lecture> events = new ArrayList<>();
+
+                // לולאה 1: עוברת על תיקיות השמות (למשל: "נועה זוהר")
+                for (DataSnapshot nameSnapshot : snapshot.getChildren()) {
+
+                    // לולאה 2: עוברת על כל האירועים (event_id) שנמצאים בתוך השם הזה
+                    for (DataSnapshot eventSnapshot : nameSnapshot.getChildren()) {
+
+                        try {
+                            Lecture lecture = eventSnapshot.getValue(Lecture.class);
+                            if (lecture != null) {
+                                events.add(lecture);
+                            }
+                        } catch (Exception e) {
+                            // אם יש פריט שאינו הרצאה, הוא פשוט ידלג עליו ולא יקרוס
+                        }
                     }
                 }
-                totalLectures = learningEvents.size();
 
-                if (listener != null) {
-                    listener.onEventsFetched(learningEvents);
-                }
+                listener.onEventsFetched(events);
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                if (listener != null) {
-                    listener.onError(error.getMessage());
-                }
+                listener.onError(error.getMessage());
             }
         });
     }

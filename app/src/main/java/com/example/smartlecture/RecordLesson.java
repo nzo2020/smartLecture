@@ -22,11 +22,10 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
 
 import java.util.Locale;
-import java.util.UUID;
 
 public class RecordLesson extends AppCompatActivity {
 
-    private TextInputEditText etTeacherName;
+    private TextInputEditText etTeacherName, etLessonTitle; // נוסף etLessonTitle
     private TextView tvRecordingTime, tvLessonSummary;
     private MaterialButton btnStart, btnStop, btnAddSummary, btnBackHome;
     private SwitchMaterial swPublicAccess;
@@ -57,10 +56,8 @@ public class RecordLesson extends AppCompatActivity {
         initViews();
         setupListeners();
 
-        // רישום ה-Receiver (תמיכה ב-Android 14+)
-        // בתוך onCreate במחלקה RecordLesson
+        // רישום ה-Receiver
         IntentFilter filter = new IntentFilter("RECORDING_FINISHED");
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(statusReceiver, filter, Context.RECEIVER_EXPORTED);
         } else {
@@ -69,6 +66,7 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     private void initViews() {
+        etLessonTitle = findViewById(R.id.etLessonTitle); // קישור לשדה הכותרת החדש
         etTeacherName = findViewById(R.id.etTeacherName);
         tvRecordingTime = findViewById(R.id.tvRecordingTime);
         tvLessonSummary = findViewById(R.id.tvLessonSummary);
@@ -92,8 +90,16 @@ public class RecordLesson extends AppCompatActivity {
 
     private void startRecordingProcess() {
         currentEventId = "event_" + System.currentTimeMillis();
+
+        // שליפת הנתונים מהשדות
         String teacher = etTeacherName.getText().toString().trim();
+        String lessonTitle = etLessonTitle.getText().toString().trim();
         String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
+
+        // בדיקה בסיסית לכותרת
+        if (lessonTitle.isEmpty()) {
+            lessonTitle = "שיעור ללא כותרת";
+        }
 
         Intent intent = new Intent(this, RecordingService.class);
         intent.setAction("START_RECORDING");
@@ -101,6 +107,7 @@ public class RecordLesson extends AppCompatActivity {
         intent.putExtra("USER_ID", uid);
         intent.putExtra("IS_PUBLIC", swPublicAccess.isChecked());
         intent.putExtra("TEACHER", teacher.isEmpty() ? "Unknown" : teacher);
+        intent.putExtra("LESSON_TITLE", lessonTitle); // שליחת הכותרת ל-Service
 
         ContextCompat.startForegroundService(this, intent);
 
@@ -122,10 +129,12 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     private void resetScreen() {
-        etTeacherName.setText("");
+        etLessonTitle.setText(""); // איפוס כותרת
+        etTeacherName.setText(""); // איפוס שם מורה
         tvRecordingTime.setText("⏱ 00:00");
         tvLessonSummary.setText("Summary will appear here...");
         btnStart.setEnabled(true);
+        btnStop.setEnabled(false);
     }
 
     private final Runnable timerRunnable = new Runnable() {
@@ -149,6 +158,10 @@ public class RecordLesson extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(statusReceiver);
+        try {
+            unregisterReceiver(statusReceiver);
+        } catch (Exception e) {
+            // Receiver already unregistered
+        }
     }
 }
