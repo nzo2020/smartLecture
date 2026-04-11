@@ -5,6 +5,10 @@ public class Prompts {
             "אם אתה לא מוצא פרי או ירק בתמונה תן לי הנחיה לצלם את התמונה מחדש,\n" +
             "כך שהפרי או הירק יופיע בבירור בתמונה.";
 
+    // בתוך מחלקת Prompts.java
+    public static final String LECTURE_SUMMARY_PROMPT = "סכם את הקלטת השיעור הבאה בעברית. " +
+            "אנא ספק סיכום תמציתי של הנושאים העיקריים, מילות מפתח, ונקודות חשובות שנאמרו.";
+
     public static final String INGREDIENTS_SCHEMA = "{\n" +
             "  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n" +
             "  \"title\": \"Dish Ingredients\",\n" +

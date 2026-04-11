@@ -1,94 +1,134 @@
 package com.example.smartlecture;
 
-import static com.example.smartlecture.FBRef.refAuth;
-
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.Service;
+import android.app.*;
 import android.content.Intent;
 import android.media.MediaRecorder;
-import android.os.Build;
-import android.os.IBinder;
+import android.os.*;
+import android.util.Log;
 import androidx.core.app.NotificationCompat;
-import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import com.example.smartlecture.Gemini.*;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.storage.FirebaseStorage;
+import java.io.File;
+import java.nio.file.Files;
 
 public class RecordingService extends Service {
-    private static final String CHANNEL_ID = "RecordingChannel";
-    private MediaRecorder mediaRecorder;
-    private String outputFilePath, eventID, teacherName;
+    private MediaRecorder recorder;
+    private String eventId, userId, filePath;
     private boolean isPublic;
-    private ExecutorService executorService = Executors.newFixedThreadPool(2);
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        createNotificationChannel();
+        if (intent == null) return START_NOT_STICKY;
 
-        outputFilePath = intent.getStringExtra("filePath");
-        eventID = intent.getStringExtra("eventID");
-        teacherName = intent.getStringExtra("teacher");
-        isPublic = intent.getBooleanExtra("isPublic", false);
+        String action = intent.getAction();
+        if ("START_RECORDING".equals(action)) {
+            setupParameters(intent);
+            startForeground(1, getNotification("Recording lesson..."));
+            startRecording();
+        } else if ("STOP_RECORDING".equals(action)) {
+            stopRecording();
+        }
+        return START_STICKY;
+    }
 
-        startForeground(1, createNotification("מקליט הרצאה: " + teacherName));
-        startRecording();
-
-        return START_NOT_STICKY;
+    private void setupParameters(Intent intent) {
+        eventId = intent.getStringExtra("EVENT_ID");
+        userId = intent.getStringExtra("USER_ID");
+        isPublic = intent.getBooleanExtra("IS_PUBLIC", false);
+        filePath = getExternalCacheDir().getAbsolutePath() + "/" + eventId + ".mp4";
     }
 
     private void startRecording() {
-        mediaRecorder = new MediaRecorder();
-        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-        mediaRecorder.setOutputFile(outputFilePath);
-
         try {
-            mediaRecorder.prepare();
-            mediaRecorder.start();
-        } catch (IOException e) {
-            e.printStackTrace();
+            recorder = new MediaRecorder();
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+
+            recorder.setOutputFile(filePath);
+            recorder.prepare();
+            recorder.start();
+        } catch (Exception e) { Log.e("Service", "Failed", e); }
+    }
+
+    private void stopRecording() {
+        if (recorder != null) {
+            recorder.stop();
+            recorder.release();
+            recorder = null;
+            uploadAndAnalyze();
         }
     }
 
-    @Override
-    public void onDestroy() {
-        if (mediaRecorder != null) {
-            mediaRecorder.stop();
-            mediaRecorder.release();
-            mediaRecorder = null;
-            // כאן מפעילים את ה-Threads לעיבוד (Gemini + Storage)
-            processAndUpload();
+    private void uploadAndAnalyze() {
+        Log.d("STEP", "--- Starting Upload to Firebase ---");
+        File file = new File(filePath);
+
+        FirebaseStorage.getInstance().getReference("recordings/" + userId + "/" + eventId + ".mp4")
+                .putFile(android.net.Uri.fromFile(file))
+                .addOnSuccessListener(task -> {
+                    Log.d("STEP", "--- Upload Successful! Getting URL ---");
+                    task.getStorage().getDownloadUrl().addOnSuccessListener(uri -> {
+                        Log.d("STEP", "--- URL Received: " + uri.toString() + " ---");
+                        analyzeWithGemini(file, uri.toString());
+                    });
+                })
+                .addOnFailureListener(e -> {
+                    Log.e("STEP", "--- Upload Failed: " + e.getMessage() + " ---");
+                });
+    }
+
+    private void analyzeWithGemini(File file, String url) {
+        try {
+            Log.d("STEP", "--- Preparing Bytes for Gemini ---");
+            byte[] bytes = Files.readAllBytes(file.toPath());
+
+            Log.d("STEP", "--- Starting Gemini AI Request (Calling SDK) ---");
+
+            GeminiManager.getInstance().sendTextWithFilePrompt("סכם את השיעור בעברית", bytes, "audio/mp4", new GeminiCallback() {
+                @Override
+                public void onSuccess(String result) {
+                    Log.d("STEP", "--- Got result from Gemini! ---");
+                    Log.d("STEP", "Summary Length: " + result.length() + " chars");
+
+                    saveToDb(result, url);
+
+                    Intent intent = new Intent("RECORDING_FINISHED");
+                    intent.putExtra("summary", result);
+                    sendBroadcast(intent);
+                    stopSelf();
+                }
+
+                @Override
+                public void onFailure(Throwable e) {
+                    Log.e("STEP", "--- Gemini Failed: " + e.getMessage() + " ---");
+                    stopSelf();
+                }
+            });
+        } catch (Exception e) {
+            Log.e("STEP", "--- Error in analyzeWithGemini: " + e.getMessage() + " ---");
+            stopSelf();
         }
-        super.onDestroy();
     }
 
-    private void processAndUpload() {
-        executorService.execute(() -> {
-            // כאן תבוא הקריאה ל-GeminiManager ול-Storage שכתבנו
-            // בסיום התהליך, שלחי התראה:
-            NotificationHelper.showSummaryReadyNotification(getApplicationContext(), teacherName);
-        });
+    private void saveToDb(String summary, String url) {
+        String path = isPublic ? "Lectures/pub_true/נועה זוהר/" + eventId : "Lectures/pub_false/" + userId + "/נועה זוהר/" + eventId;
+        FirebaseDatabase.getInstance().getReference(path).child("summaryText").setValue(summary);
+        FirebaseDatabase.getInstance().getReference(path).child("audioURL").setValue(url);
+        FirebaseDatabase.getInstance().getReference(path).child("status").setValue("ready");
     }
 
-    private Notification createNotification(String text) {
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("SmartLecture")
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
-    }
-
-    private void createNotificationChannel() {
+    private Notification getNotification(String text) {
+        String channelId = "record_chan";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel serviceChannel = new NotificationChannel(
-                    CHANNEL_ID, "Recording Service Channel",
-                    NotificationManager.IMPORTANCE_LOW);
-            getSystemService(NotificationManager.class).createNotificationChannel(serviceChannel);
+            NotificationChannel chan = new NotificationChannel(channelId, "Record", NotificationManager.IMPORTANCE_LOW);
+            getSystemService(NotificationManager.class).createNotificationChannel(chan);
         }
+        return new NotificationCompat.Builder(this, channelId)
+                .setContentTitle("Smart Lecture").setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now).build();
     }
 
-    @Override public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent i) { return null; }
 }

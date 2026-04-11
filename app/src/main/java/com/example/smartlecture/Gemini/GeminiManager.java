@@ -38,7 +38,7 @@ public class GeminiManager {
      */
     private GeminiManager() {
         gemini = new GenerativeModel(
-                "gemini-2.0-flash",
+                "gemini-2.5-flash",
                 BuildConfig.Gemini_API_Key
         );
     }
