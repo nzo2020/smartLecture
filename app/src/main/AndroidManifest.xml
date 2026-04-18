@@ -33,9 +33,6 @@
             android:name=".AddReminderActivity"
             android:exported="false" />
         <activity
-            android:name=".Dialog_Add_Event"
-            android:exported="false" />
-        <activity
             android:name=".CalendarActivity"
             android:exported="false" />
         <activity

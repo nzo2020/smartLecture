@@ -20,6 +20,7 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -30,7 +31,7 @@ public class RemindersActivity extends AppCompatActivity {
     private MaterialButton btnAddReminder, btnBackHome;
 
     private List<Task> taskList;
-    private List<String> displayList; // הרשימה שתופיע ב-ListView
+    private List<String> displayList;
     private ArrayAdapter<String> adapter;
 
     @Override
@@ -41,16 +42,14 @@ public class RemindersActivity extends AppCompatActivity {
         initViews();
         loadRemindersFromFirebase();
 
-        // כפתור הוספת תזכורת חדשה
         btnAddReminder.setOnClickListener(v -> {
             Intent intent = new Intent(this, AddReminderActivity.class);
             startActivity(intent);
         });
 
-        // חזרה לבית
         btnBackHome.setOnClickListener(v -> finish());
 
-        // בונוס: לחיצה ארוכה למחיקה
+        // מחיקה בלחיצה ארוכה
         lvReminders.setOnItemLongClickListener((parent, view, position, id) -> {
             deleteTask(position);
             return true;
@@ -83,19 +82,27 @@ public class RemindersActivity extends AppCompatActivity {
                     Task task = data.getValue(Task.class);
                     if (task != null) {
                         taskList.add(task);
-
-                        // עיצוב הטקסט שיוצג ברשימה
-                        String date = new SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
-                                .format(new Date(task.getTimestamp()));
-                        displayList.add("📌 " + task.getTitle() + "\n📍 " + task.getLocation() + " | ⏰ " + date);
                     }
                 }
+
+                // --- אלגוריתם מיון לפי תאריך (Timestamp) ---
+                // ממיין מהתאריך הקרוב ביותר (הקטן ביותר) לרחוק ביותר
+                Collections.sort(taskList, (t1, t2) -> Long.compare(t1.getTimestamp(), t2.getTimestamp()));
+
+                // בניית רשימת התצוגה לאחר המיון
+                SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault());
+                for (Task t : taskList) {
+                    String dateStr = sdf.format(new Date(t.getTimestamp()));
+                    String status = t.isCompleted() ? "✅" : "⏳";
+                    displayList.add(status + " " + t.getTitle() + "\n📍 " + t.getLocation() + " | 📅 " + dateStr);
+                }
+
                 adapter.notifyDataSetChanged();
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(RemindersActivity.this, "Failed to load reminders", Toast.LENGTH_SHORT).show();
+                Toast.makeText(RemindersActivity.this, "שגיאה בטעינת נתונים", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -108,6 +115,6 @@ public class RemindersActivity extends AppCompatActivity {
                 .child(uid)
                 .child(taskToDelete.getEventID())
                 .removeValue()
-                .addOnSuccessListener(aVoid -> Toast.makeText(this, "Reminder deleted", Toast.LENGTH_SHORT).show());
+                .addOnSuccessListener(aVoid -> Toast.makeText(this, "התזכורת נמחקה", Toast.LENGTH_SHORT).show());
     }
 }
