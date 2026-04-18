@@ -1,10 +1,12 @@
 package com.example.smartlecture;
 
 import static com.example.smartlecture.FBRef.refAuth;
-
 import android.app.DatePickerDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.TimePickerDialog;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.CalendarContract;
 import android.view.View;
@@ -13,13 +15,11 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.database.FirebaseDatabase;
-
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Locale;
 
@@ -27,20 +27,36 @@ public class CalendarActivity extends AppCompatActivity {
 
     private WebView webViewCalendar;
     private MaterialButton btnAddEvent, btnBackHome;
+    private final String CHANNEL_ID = "MyReminderChannel";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_calendar);
 
+        createNotificationChannel();
+        requestNotificationPermission();
         initViews();
         setupWebView();
 
-        // כפתור הוספת אירוע
         btnAddEvent.setOnClickListener(v -> showAddEventDialog());
-
-        // כפתור חזרה
         btnBackHome.setOnClickListener(v -> finish());
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
+        }
     }
 
     private void initViews() {
@@ -58,19 +74,15 @@ public class CalendarActivity extends AppCompatActivity {
     }
 
     private void showAddEventDialog() {
-        // 1. ניפוח ה-XML של הדיאלוג
         View dialogView = getLayoutInflater().inflate(R.layout.activity_dialog_add_event, null);
-
         EditText etName = dialogView.findViewById(R.id.etEventName);
         EditText etLocation = dialogView.findViewById(R.id.etEventLocation);
         EditText etDescription = dialogView.findViewById(R.id.etEventDescription);
         EditText etDate = dialogView.findViewById(R.id.etEventDate);
         EditText etTime = dialogView.findViewById(R.id.etEventTime);
 
-        // אובייקט לשמירת הזמן שנבחר מה-Pickers
         final Calendar selectedCalendar = Calendar.getInstance();
 
-        // הגדרת בחירת תאריך בלחיצה על השדה
         etDate.setOnClickListener(v -> {
             new DatePickerDialog(this, (view, year, month, day) -> {
                 selectedCalendar.set(Calendar.YEAR, year);
@@ -80,7 +92,6 @@ public class CalendarActivity extends AppCompatActivity {
             }, selectedCalendar.get(Calendar.YEAR), selectedCalendar.get(Calendar.MONTH), selectedCalendar.get(Calendar.DAY_OF_MONTH)).show();
         });
 
-        // הגדרת בחירת שעה בלחיצה על השדה
         etTime.setOnClickListener(v -> {
             new TimePickerDialog(this, (view, hour, minute) -> {
                 selectedCalendar.set(Calendar.HOUR_OF_DAY, hour);
@@ -89,81 +100,49 @@ public class CalendarActivity extends AppCompatActivity {
             }, selectedCalendar.get(Calendar.HOUR_OF_DAY), selectedCalendar.get(Calendar.MINUTE), true).show();
         });
 
-        // 2. בניית הדיאלוג
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setView(dialogView)
                 .setPositiveButton("שמור והוסף", (d, which) -> {
                     String title = etName.getText().toString().trim();
                     String location = etLocation.getText().toString().trim();
                     String desc = etDescription.getText().toString().trim();
 
-                    if (title.isEmpty() || etDate.getText().toString().isEmpty()) {
-                        Toast.makeText(this, "אנא הזן כותרת ותאריך", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
+                    if (title.isEmpty()) return;
 
                     long finalTime = selectedCalendar.getTimeInMillis();
+                    String eventID = "task_" + System.currentTimeMillis();
 
-                    // א. שמירה ל-Firebase (כדי שיופיע ב-ListView של התזכורות)
-                    saveToFirebase(title, location, finalTime);
+                    // 1. Firebase
+                    saveToFirebase(eventID, title, location, finalTime);
 
-                    // ב. שליחה לגוגל קלנדר (פותח את האפליקציה החיצונית)
+                    // 2. AlarmManager
+                    Task t = new Task(eventID, title, finalTime, refAuth.getCurrentUser().getUid(), location);
+                    t.setRemindAt(finalTime);
+                    new ReminderManager(this, new ArrayList<>()).addTask(t);
+
+                    // 3. יומן חיצוני
                     sendToExternalCalendar(title, location, desc, finalTime);
                 })
                 .setNegativeButton("ביטול", null)
-                .create();
-
-        // הפיכת רקע הדיאלוג לשקוף עבור ה-CardView המעוגל
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        }
-        dialog.show();
+                .show();
     }
 
-    private void saveToFirebase(String title, String location, long time) {
+    private void saveToFirebase(String id, String t, String l, long time) {
         if (refAuth.getCurrentUser() == null) return;
-
-        String uid = refAuth.getCurrentUser().getUid();
-        String eventID = "task_" + System.currentTimeMillis();
-
-        // יצירת אובייקט Task ושמירתו
-        Task newTask = new Task(eventID, title, time, uid, location);
-        newTask.setReminder(time);
-        newTask.setPriorityScore(1);
-        newTask.setCompleted(false);
-
+        Task newTask = new Task(id, t, time, refAuth.getCurrentUser().getUid(), l);
+        newTask.setRemindAt(time);
         FirebaseDatabase.getInstance().getReference("Reminders")
-                .child(uid)
-                .child(eventID)
-                .setValue(newTask)
-                .addOnSuccessListener(aVoid -> Toast.makeText(this, "נשמר במערכת", Toast.LENGTH_SHORT).show());
+                .child(refAuth.getCurrentUser().getUid()).child(id).setValue(newTask);
     }
 
-    private void sendToExternalCalendar(String title, String location, String description, long startTime) {
-        Intent intent = new Intent(Intent.ACTION_INSERT);
-        intent.setData(CalendarContract.Events.CONTENT_URI);
-
-        intent.putExtra(CalendarContract.Events.TITLE, title);
-        intent.putExtra(CalendarContract.Events.EVENT_LOCATION, location);
-        intent.putExtra(CalendarContract.Events.DESCRIPTION, description);
-
-        // העברת הזמן המדויק שנבחר ב-Picker לגוגל קלנדר
-        intent.putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime);
-        intent.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, startTime + (60 * 60 * 1000)); // ברירת מחדל: שעה אחת
-
-        try {
-            startActivity(intent);
-        } catch (Exception e) {
-            Toast.makeText(this, "לא נמצאה אפליקציית לוח שנה", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webViewCalendar.canGoBack()) {
-            webViewCalendar.goBack();
-        } else {
-            super.onBackPressed();
-        }
+    private void sendToExternalCalendar(String t, String l, String d, long start) {
+        Intent intent = new Intent(Intent.ACTION_INSERT)
+                .setData(CalendarContract.Events.CONTENT_URI)
+                .putExtra(CalendarContract.Events.TITLE, t)
+                .putExtra(CalendarContract.Events.EVENT_LOCATION, l)
+                .putExtra(CalendarContract.Events.DESCRIPTION, d)
+                .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, start)
+                .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, start + 3600000);
+        startActivity(intent);
     }
 }

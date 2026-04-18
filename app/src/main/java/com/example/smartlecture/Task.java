@@ -55,4 +55,7 @@ public class Task extends LearningEvent implements ISearchable {
 
     public long getRemindAt() { return remindAt; }
     public void setRemindAt(long remindAt) { this.remindAt = remindAt; }
+    public long getReminder() {
+        return remindAt;
+    }
 }
