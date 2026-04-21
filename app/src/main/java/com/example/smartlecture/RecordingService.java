@@ -1,6 +1,7 @@
 package com.example.smartlecture;
 
 import android.app.*;
+import android.content.Context;
 import android.content.Intent;
 import android.media.MediaRecorder;
 import android.os.*;
@@ -123,9 +124,10 @@ public class RecordingService extends Service {
         }
     }
 
+    // ... (שאר ה-Imports נשארים אותו דבר)
+
     private void saveToDb(String summary, String url) {
         String visibilityKey = isPublic ? "pub_true" : "pub_false";
-
         String userName = "User";
         if (com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser() != null) {
             userName = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
@@ -139,21 +141,51 @@ public class RecordingService extends Service {
         updates.put("audioURL", url);
         updates.put("status", isPublic ? "ready" : "draft");
         updates.put("userID", userId);
-
-        // כאן השינוי: משתמשים ב-lessonTitle שקיבלנו מהמשתמש
         updates.put("title", lessonTitle);
-
         updates.put("lecturer", (teacherName != null && !teacherName.isEmpty()) ? teacherName : "Unknown");
         updates.put("timestamp", System.currentTimeMillis());
 
         FirebaseDatabase.getInstance().getReference(path).setValue(updates)
                 .addOnSuccessListener(aVoid -> {
                     Log.d("STEP", "--- Saved to DB successfully ---");
+
+                    // --- כאן הוספתי את הקריאה להתראה החדשה ---
+                    showFinishedNotification(lessonTitle);
+
                     Intent intent = new Intent("RECORDING_FINISHED");
                     intent.putExtra("summary", summary);
                     sendBroadcast(intent);
                     stopSelf();
                 });
+    }
+
+    // פונקציה חדשה שיוצרת את התראת הסיום
+    private void showFinishedNotification(String title) {
+        String channelId = "finish_chan";
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel chan = new NotificationChannel(channelId, "Lesson Finished", NotificationManager.IMPORTANCE_HIGH);
+            if (manager != null) manager.createNotificationChannel(chan);
+        }
+
+        // לחיצה על ההתראה תפתח את האפליקציה
+        Intent intent = new Intent(this, RecordLesson.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, channelId)
+                .setContentTitle("הסיכום מוכן! ✨")
+                .setContentText("השיעור '" + title + "' סוכם בהצלחה על ידי Gemini")
+                .setSmallIcon(android.R.drawable.btn_plus) // או כל אייקון אחר שיש לך
+                .setAutoCancel(true) // ההתראה תיעלם אחרי לחיצה
+                .setContentIntent(pendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build();
+
+        if (manager != null) {
+            manager.notify(2, notification); // מזהה 2 כדי שלא ידרוס את התראת ההקלטה
+        }
     }
 
     private Notification getNotification(String text) {

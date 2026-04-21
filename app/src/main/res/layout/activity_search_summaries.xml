@@ -64,6 +64,26 @@
             android:paddingHorizontal="8dp" />
     </FrameLayout>
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Search by keywords (content/title):"
+        android:textColor="#666666"
+        android:textSize="14sp"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/etFreeSearch"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginBottom="16dp"
+        android:background="@android:drawable/edit_text"
+        android:backgroundTint="#F5F5F5"
+        android:hint="e.g. Cyber, Exam, Python..."
+        android:inputType="text"
+        android:paddingHorizontal="16dp"
+        android:textSize="16sp" />
+
     <ListView
         android:id="@+id/lvSearchResults"
         android:layout_width="match_parent"
