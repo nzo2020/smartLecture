@@ -10,6 +10,7 @@ public class Lecture extends LearningEvent implements IRecordable, ISearchable {
     private String status; // ready / processing / draft
     private boolean pub; // האם ציבורי
     private String lecturer;
+    private String relevantLinks; // התכונה החדשה שהוספה
 
     // בנאי ריק חובה עבור Firebase
     public Lecture() {
@@ -61,7 +62,8 @@ public class Lecture extends LearningEvent implements IRecordable, ISearchable {
 
     public String getSummaryText() { return summaryText; }
     public void setSummaryText(String summaryText) { this.summaryText = summaryText; }
-
+    public String getRelevantLinks() { return relevantLinks; } // Getter לתכונה החדשה
+    public void setRelevantLinks(String relevantLinks) { this.relevantLinks = relevantLinks; } // Setter לתכונה החדשה
     public List<String> getKeywords() { return keywords; }
     public void setKeywords(List<String> keywords) { this.keywords = keywords; }
 

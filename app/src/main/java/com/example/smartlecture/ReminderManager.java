@@ -45,4 +45,24 @@ public class ReminderManager {
             }
         }
     }
+
+    // הוסיפי את זה בתוך קובץ ה-ReminderManager.java שלך
+    public void cancelReminder(Task task) {
+        Intent intent = new Intent(context, ReminderBroadcastReceiver.class);
+        // חשוב להשתמש באותו requestCode (ה-ID של המשימה) כדי שהמערכת תדע מה לבטל
+        int requestCode = (int) task.getTimestamp();
+
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null) {
+            alarmManager.cancel(pendingIntent);
+        }
+    }
+
 }

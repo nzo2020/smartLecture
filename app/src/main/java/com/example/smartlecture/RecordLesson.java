@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.text.util.Linkify;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,15 +35,30 @@ public class RecordLesson extends AppCompatActivity {
     private Handler timerHandler = new Handler();
     private String currentEventId;
 
-    // Receiver שמאזין ל-Broadcast מה-Service כשהסיכום מוכן
+    // ... בתוך ה-BroadcastReceiver:
     private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("RECORDING_FINISHED".equals(intent.getAction())) {
-                String summary = intent.getStringExtra("summary");
-                tvLessonSummary.setText(summary);
+                // קבלת הסיכום והקישורים בנפרד מה-Service
+                String summaryText = intent.getStringExtra("summaryText");
+                String relevantLinks = intent.getStringExtra("relevantLinks");
+
+                // הצגת המידע ב-TextView
+                StringBuilder fullDisplay = new StringBuilder();
+                fullDisplay.append(summaryText);
+
+                if (relevantLinks != null && !relevantLinks.isEmpty()) {
+                    fullDisplay.append("\n\n🔗 קישורים רלוונטיים:\n").append(relevantLinks);
+                }
+
+                tvLessonSummary.setText(fullDisplay.toString());
+
+                // הפיכת הקישורים ללחיצים
+                Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
+
                 tvRecordingTime.setText("✅ Done");
-                Toast.makeText(context, "Summary generated!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "הסיכום והקישורים מוכנים!", Toast.LENGTH_SHORT).show();
                 btnStart.setEnabled(true);
             }
         }

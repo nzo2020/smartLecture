@@ -4,7 +4,14 @@ import static com.example.smartlecture.FBRef.refAuth;
 import static com.example.smartlecture.FBRef.refUsers;
 
 import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.UnderlineSpan;
+import android.text.util.Linkify;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -66,7 +73,6 @@ public class ViewSummeryActivity extends AppCompatActivity {
         lectureList = new ArrayList<>();
         lectureTitles = new ArrayList<>();
 
-        // יצירת ה-Adapter
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lectureTitles);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spSummarySelector.setAdapter(adapter);
@@ -76,7 +82,6 @@ public class ViewSummeryActivity extends AppCompatActivity {
         if (refAuth.getCurrentUser() != null) {
             String uid = refAuth.getCurrentUser().getUid();
 
-            // הצגת הודעה "טוען..." עד שהנתונים יגיעו
             lectureTitles.clear();
             lectureTitles.add("טוען שיעורים...");
             adapter.notifyDataSetChanged();
@@ -86,7 +91,6 @@ public class ViewSummeryActivity extends AppCompatActivity {
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     User user = snapshot.getValue(User.class);
                     if (user != null) {
-                        // חשוב: לוודא שמתודת fetchEvents במחלקת User מעודכנת לנתיב החדש
                         user.fetchEvents(new User.OnEventsFetchListener() {
                             @Override
                             public void onEventsFetched(List<Lecture> events) {
@@ -101,7 +105,6 @@ public class ViewSummeryActivity extends AppCompatActivity {
                                 } else {
                                     for (Lecture lecture : events) {
                                         lectureList.add(lecture);
-                                        // שימוש בכותרת שהמשתמש הזין (Title)
                                         String title = (lecture.getTitle() != null && !lecture.getTitle().isEmpty())
                                                 ? lecture.getTitle() : "שיעור ללא כותרת";
                                         String lecturer = (lecture.getLecturer() != null) ? lecture.getLecturer() : "מרצה לא ידוע";
@@ -129,23 +132,71 @@ public class ViewSummeryActivity extends AppCompatActivity {
         if (position == 0 || lectureList.get(position) == null) {
             tvSummaryContent.setText("אנא בחר סיכום כדי לצפות בפרטים");
             tvLinks.setText("");
-            btnShare.setEnabled(false); // ביטול כפתור שיתוף כשאין תוכן
+            btnShare.setEnabled(false);
             return;
         }
 
         Lecture selected = lectureList.get(position);
         tvSummaryContent.setText(selected.getSummaryText());
 
-        // הצגת הקישור להקלטה בצורה יפה
+        // 1. בניית הטקסט הגולמי
+        StringBuilder sb = new StringBuilder();
+
+        // הוספת קישורי ה-AI
+        if (selected.getRelevantLinks() != null && !selected.getRelevantLinks().isEmpty()) {
+            sb.append("🔗 קישורים רלוונטיים:\n")
+                    .append(selected.getRelevantLinks())
+                    .append("\n\n");
+        }
+
+        // חישוב המיקום לצביעה בכחול
+        int startOfAudioText = sb.length();
+        String audioText = "🎙️ הקלטת השיעור זמינה בענן (לחץ כאן להאזנה)";
+
         if (selected.getAudioURL() != null && !selected.getAudioURL().isEmpty()) {
-            tvLinks.setText("🔗 הקלטת השיעור זמינה בענן");
+            sb.append(audioText);
+        } else {
+            sb.append("❌ אין הקלטה זמינה");
+        }
+
+        // 2. יצירת Spannable לעיצוב
+        SpannableString spannable = new SpannableString(sb.toString());
+
+        if (selected.getAudioURL() != null && !selected.getAudioURL().isEmpty()) {
+            // צביעה בכחול
+            spannable.setSpan(
+                    new ForegroundColorSpan(Color.BLUE),
+                    startOfAudioText,
+                    sb.length(),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+
+            // הוספת קו תחתון
+            spannable.setSpan(
+                    new UnderlineSpan(),
+                    startOfAudioText,
+                    sb.length(),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+
+            // הגדרת לחיצה על ה-TextView
             tvLinks.setOnClickListener(v -> {
-                // אופציונלי: פתיחת הלינק בדפדפן או בנגן
-                Toast.makeText(this, "פתיחת הקלטה...", Toast.LENGTH_SHORT).show();
+                try {
+                    Uri uri = Uri.parse(selected.getAudioURL());
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "שגיאה בפתיחת ההקלטה", Toast.LENGTH_SHORT).show();
+                }
             });
         } else {
-            tvLinks.setText("❌ אין הקלטה זמינה");
+            tvLinks.setOnClickListener(null);
         }
+
+        tvLinks.setText(spannable);
+
+        // 3. הפעלת Linkify לזיהוי כתובות אינטרנט של Gemini
+        Linkify.addLinks(tvLinks, Linkify.WEB_URLS);
 
         btnShare.setEnabled(true);
     }
@@ -155,17 +206,17 @@ public class ViewSummeryActivity extends AppCompatActivity {
         if (selectedPos <= 0 || lectureList.get(selectedPos) == null) return;
 
         Lecture selected = lectureList.get(selectedPos);
-        String shareBody = "סיכום שיעור: " + selected.getTitle() + "\n\n" +
-                "מרצה: " + selected.getLecturer() + "\n\n" +
-                "תוכן הסיכום:\n" + selected.getSummaryText() + "\n\n" +
-                "להאזנה להקלטה:\n" + selected.getAudioURL();
+        String shareBody = "📖 סיכום שיעור: " + selected.getTitle() + "\n" +
+                "👨‍🏫 מרצה: " + selected.getLecturer() + "\n\n" +
+                "📝 סיכום:\n" + selected.getSummaryText() + "\n\n" +
+                "🔗 קישורים נוספים:\n" + selected.getRelevantLinks() + "\n\n" +
+                "🎙️ הקלטה:\n" + selected.getAudioURL();
 
         Intent sendIntent = new Intent();
         sendIntent.setAction(Intent.ACTION_SEND);
         sendIntent.putExtra(Intent.EXTRA_TEXT, shareBody);
         sendIntent.setType("text/plain");
 
-        Intent shareIntent = Intent.createChooser(sendIntent, "שתף סיכום שיעור באמצעות:");
-        startActivity(shareIntent);
+        startActivity(Intent.createChooser(sendIntent, "שתף סיכום שיעור"));
     }
 }

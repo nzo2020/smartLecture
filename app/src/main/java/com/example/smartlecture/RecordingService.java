@@ -17,7 +17,7 @@ import java.util.Map;
 
 public class RecordingService extends Service {
     private MediaRecorder recorder;
-    private String eventId, userId, filePath, teacherName, lessonTitle; // הוספתי lessonTitle
+    private String eventId, userId, filePath, teacherName, lessonTitle;
     private boolean isPublic;
 
     @Override
@@ -40,9 +40,8 @@ public class RecordingService extends Service {
         userId = intent.getStringExtra("USER_ID");
         isPublic = intent.getBooleanExtra("IS_PUBLIC", false);
         teacherName = intent.getStringExtra("TEACHER");
-
-        // תיקון: שליפת הכותרת שהמשתמש הקליד ב-RecordLesson
         lessonTitle = intent.getStringExtra("LESSON_TITLE");
+
         if (lessonTitle == null || lessonTitle.isEmpty()) {
             lessonTitle = "שיעור ללא כותרת";
         }
@@ -78,66 +77,73 @@ public class RecordingService extends Service {
     }
 
     private void uploadAndAnalyze() {
-        Log.d("STEP", "--- Starting Upload to Firebase ---");
         File file = new File(filePath);
         if (!file.exists()) return;
 
+        // העלאה ל-Storage לפי המבנה שציינת: recordings/user_id/event_id.mp4
         FirebaseStorage.getInstance().getReference("recordings/" + userId + "/" + eventId + ".mp4")
                 .putFile(android.net.Uri.fromFile(file))
                 .addOnSuccessListener(task -> {
-                    Log.d("STEP", "--- Upload Successful! Getting URL ---");
                     task.getStorage().getDownloadUrl().addOnSuccessListener(uri -> {
-                        Log.d("STEP", "--- URL Received: " + uri.toString() + " ---");
                         analyzeWithGemini(file, uri.toString());
                     });
                 })
-                .addOnFailureListener(e -> {
-                    Log.e("STEP", "--- Upload Failed: " + e.getMessage() + " ---");
-                    stopSelf();
-                });
+                .addOnFailureListener(e -> stopSelf());
     }
 
     private void analyzeWithGemini(File file, String url) {
         try {
-            Log.d("STEP", "--- Preparing Bytes for Gemini ---");
             byte[] bytes = Files.readAllBytes(file.toPath());
 
-            // שימוש ב-Prompt המובנה מה-Prompts class שלך או טקסט חופשי
-            String prompt = "סכם את השיעור בעברית בצורה תמציתית.";
+            // ה-Prompt המעודכן לבקשת סיכום וקישורים
+            String prompt = "סכם את השיעור הבא בעברית בצורה תמציתית וברורה. " +
+                    "בסוף הסיכום, הוסף כותרת בשם 'קישורים רלוונטיים:' ומתחתיה הבא 3 קישורים " +
+                    "מאתרים לימודיים או יוטיוב שמרחיבים על הנושאים שדובר עליהם.";
 
             GeminiManager.getInstance().sendTextWithFilePrompt(prompt, bytes, "audio/mp4", new GeminiCallback() {
                 @Override
                 public void onSuccess(String result) {
-                    Log.d("STEP", "--- Got result from Gemini! ---");
-                    saveToDb(result, url);
+                    String summaryPart = result;
+                    String linksPart = "";
+
+                    // חיפוש גמיש יותר שמתעלם מכוכביות של Markdown
+                    if (result.contains("קישורים רלוונטיים")) {
+                        // פיצול לפי מילת המפתח, לא משנה מה יש סביבה
+                        String[] parts = result.split("קישורים רלוונטיים:?");
+                        summaryPart = parts[0].replace("*", "").trim(); // ניקוי כוכביות מיותרות
+                        if (parts.length > 1) {
+                            linksPart = parts[1].trim();
+                        }
+                    }
+
+                    saveToDb(summaryPart, linksPart, url);
                 }
 
                 @Override
                 public void onFailure(Throwable e) {
-                    Log.e("STEP", "--- Gemini Failed: " + e.getMessage() + " ---");
-                    saveToDb("לא הצלחתי לסכם את השיעור, אך ההקלטה נשמרה.", url);
+                    saveToDb("לא הצלחתי לסכם את השיעור, אך ההקלטה נשמרה.", "", url);
                 }
             });
         } catch (Exception e) {
-            Log.e("STEP", "--- Error in analyzeWithGemini: " + e.getMessage() + " ---");
             stopSelf();
         }
     }
 
-    // ... (שאר ה-Imports נשארים אותו דבר)
-
-    private void saveToDb(String summary, String url) {
+    private void saveToDb(String summary, String links, String url) {
         String visibilityKey = isPublic ? "pub_true" : "pub_false";
         String userName = "User";
+
         if (com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser() != null) {
             userName = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
             if (userName == null || userName.isEmpty()) userName = "Unknown_User";
         }
 
+        // בניית הנתיב לפי המבנה שלך: Lectures/pub_xxx/user_id/user_name/event_id
         String path = "Lectures/" + visibilityKey + "/" + userId + "/" + userName + "/" + eventId;
 
         Map<String, Object> updates = new HashMap<>();
         updates.put("summaryText", summary);
+        updates.put("relevantLinks", links); // שדה הקישורים החדש
         updates.put("audioURL", url);
         updates.put("status", isPublic ? "ready" : "draft");
         updates.put("userID", userId);
@@ -147,19 +153,18 @@ public class RecordingService extends Service {
 
         FirebaseDatabase.getInstance().getReference(path).setValue(updates)
                 .addOnSuccessListener(aVoid -> {
-                    Log.d("STEP", "--- Saved to DB successfully ---");
-
-                    // --- כאן הוספתי את הקריאה להתראה החדשה ---
+                    // הצגת התראה כשהסיכום מוכן
                     showFinishedNotification(lessonTitle);
 
+
                     Intent intent = new Intent("RECORDING_FINISHED");
-                    intent.putExtra("summary", summary);
+                    intent.putExtra("summaryText", summary);
+                    intent.putExtra("relevantLinks", links);
                     sendBroadcast(intent);
                     stopSelf();
                 });
     }
 
-    // פונקציה חדשה שיוצרת את התראת הסיום
     private void showFinishedNotification(String title) {
         String channelId = "finish_chan";
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -169,23 +174,20 @@ public class RecordingService extends Service {
             if (manager != null) manager.createNotificationChannel(chan);
         }
 
-        // לחיצה על ההתראה תפתח את האפליקציה
         Intent intent = new Intent(this, RecordLesson.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, channelId)
                 .setContentTitle("הסיכום מוכן! ✨")
-                .setContentText("השיעור '" + title + "' סוכם בהצלחה על ידי Gemini")
-                .setSmallIcon(android.R.drawable.btn_plus) // או כל אייקון אחר שיש לך
-                .setAutoCancel(true) // ההתראה תיעלם אחרי לחיצה
+                .setContentText("השיעור '" + title + "' סוכם בהצלחה")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .build();
 
-        if (manager != null) {
-            manager.notify(2, notification); // מזהה 2 כדי שלא ידרוס את התראת ההקלטה
-        }
+        if (manager != null) manager.notify(2, notification);
     }
 
     private Notification getNotification(String text) {
