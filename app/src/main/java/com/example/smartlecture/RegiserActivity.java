@@ -23,6 +23,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException;
 import com.google.firebase.auth.FirebaseAuthUserCollisionException;
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.auth.UserProfileChangeRequest;
 
 public class RegiserActivity extends AppCompatActivity {
 
@@ -34,7 +35,7 @@ public class RegiserActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register);
 
-        // אתחול הרכיבים - וודאי שה-IDs תואמים ל-XML שלך
+        // אתחול הרכיבים
         eTName = findViewById(R.id.etName);
         eTEmail = findViewById(R.id.etEmail);
         eTPass = findViewById(R.id.etPassword);
@@ -42,22 +43,28 @@ public class RegiserActivity extends AppCompatActivity {
         tvStatusMsg = findViewById(R.id.tvStatusMsg);
     }
 
+    /**
+     * פונקציה ליצירת משתמש חדש
+     */
     public void createUser(View view) {
         String name = eTName.getText().toString().trim();
         String email = eTEmail.getText().toString().trim();
         String pass = eTPass.getText().toString().trim();
         String confirmPass = eTConfirmPass.getText().toString().trim();
 
-        // בדיקת תקינות בסיסית
+        // בדיקות תקינות קלט
         if (name.isEmpty() || email.isEmpty() || pass.isEmpty() || confirmPass.isEmpty()) {
-            tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
-            tvStatusMsg.setText("Please fill all fields");
+            setStatusError("Please fill all fields");
             return;
         }
 
         if (!pass.equals(confirmPass)) {
-            tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
-            tvStatusMsg.setText("Passwords do not match!");
+            setStatusError("Passwords do not match!");
+            return;
+        }
+
+        if (pass.length() < 6) {
+            setStatusError("Password must be at least 6 characters");
             return;
         }
 
@@ -73,39 +80,57 @@ public class RegiserActivity extends AppCompatActivity {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
                         if (task.isSuccessful()) {
-                            Log.i("RegisterActivity", "createUserAuth:success");
                             FirebaseUser fbUser = refAuth.getCurrentUser();
-                            String uid = fbUser.getUid();
+                            if (fbUser != null) {
+                                String uid = fbUser.getUid();
 
-                            // שלב 2: יצירת אובייקט משתמש לשמירה ב-Database
-                            // המונים (totalLectures, completedTasks) יתאפסו בבנאי של User
-                            User newUser = new User(uid, email, name);
+                                // שלב 2: עדכון ה-DisplayName ב-Firebase Auth (חשוב ל-RecordingService)
+                                UserProfileChangeRequest profileUpdates = new UserProfileChangeRequest.Builder()
+                                        .setDisplayName(name)
+                                        .build();
 
-                            // שלב 3: שמירה ב-Realtime Database תחת הענף users
-                            refUsers.child(uid).setValue(newUser)
-                                    .addOnCompleteListener(new OnCompleteListener<Void>() {
-                                        @Override
-                                        public void onComplete(@NonNull Task<Void> dbTask) {
-                                            pd.dismiss();
-                                            if (dbTask.isSuccessful()) {
-                                                Toast.makeText(RegiserActivity.this, "Registration Complete!", Toast.LENGTH_SHORT).show();
-
-                                                // מעבר למסך הראשי (Dashboard)
-                                                Intent intent = new Intent(RegiserActivity.this, DashboardActivity.class);
-                                                startActivity(intent);
-                                                finish();
-                                            } else {
-                                                tvStatusMsg.setText("Database Error: " + dbTask.getException().getMessage());
-                                            }
-                                        }
-                                    });
+                                fbUser.updateProfile(profileUpdates).addOnCompleteListener(profileTask -> {
+                                    // שלב 3: יצירת אובייקט משתמש ושמירה ב-Realtime Database
+                                    saveUserToDatabase(uid, email, name, pd);
+                                });
+                            }
                         } else {
                             pd.dismiss();
-                            tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
                             handleError(task.getException());
                         }
                     }
                 });
+    }
+
+    /**
+     * שמירת נתוני המשתמש ב-Database
+     */
+    private void saveUserToDatabase(String uid, String email, String name, ProgressDialog pd) {
+        User newUser = new User(uid, email, name);
+
+        refUsers.child(uid).setValue(newUser)
+                .addOnCompleteListener(new OnCompleteListener<Void>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Void> dbTask) {
+                        pd.dismiss();
+                        if (dbTask.isSuccessful()) {
+                            Toast.makeText(RegiserActivity.this, "Welcome " + name + "!", Toast.LENGTH_SHORT).show();
+
+                            // מעבר לדאשבורד וסגירת מסך הרישום
+                            Intent intent = new Intent(RegiserActivity.this, DashboardActivity.class);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                            startActivity(intent);
+                            finish();
+                        } else {
+                            setStatusError("Database Error: " + dbTask.getException().getMessage());
+                        }
+                    }
+                });
+    }
+
+    private void setStatusError(String msg) {
+        tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+        tvStatusMsg.setText(msg);
     }
 
     public void goToLogin(View view) {
@@ -114,17 +139,21 @@ public class RegiserActivity extends AppCompatActivity {
         finish();
     }
 
+    /**
+     * טיפול בשגיאות נפוצות של Firebase Auth
+     */
     private void handleError(Exception exp) {
+        tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
         if (exp instanceof FirebaseAuthWeakPasswordException) {
-            tvStatusMsg.setText("Password too weak (min 6 chars).");
+            tvStatusMsg.setText("Password too weak.");
         } else if (exp instanceof FirebaseAuthUserCollisionException) {
-            tvStatusMsg.setText("User already exists with this email.");
+            tvStatusMsg.setText("Email already registered.");
         } else if (exp instanceof FirebaseAuthInvalidCredentialsException) {
-            tvStatusMsg.setText("Malformed email address.");
+            tvStatusMsg.setText("Invalid email format.");
         } else if (exp instanceof FirebaseNetworkException) {
-            tvStatusMsg.setText("Network error. Check connection.");
+            tvStatusMsg.setText("No internet connection.");
         } else {
-            tvStatusMsg.setText("Error: " + (exp != null ? exp.getMessage() : "Unknown"));
+            tvStatusMsg.setText("Error: " + (exp != null ? exp.getMessage() : "Unknown error"));
         }
     }
 }

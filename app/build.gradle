@@ -28,6 +28,7 @@ android {
 
         // הגדרת המשתנה שייכנס ל-BuildConfig
         buildConfigField "String", "Gemini_API_Key", "\"${localProperties.getProperty('Gemini_API_Key', '')}\""
+        buildConfigField "String", "PLACES_API_KEY", "\"${localProperties.getProperty('PLACES_API_KEY', '')}\""
     }
 
     buildTypes {
@@ -58,6 +59,7 @@ dependencies {
     implementation libs.firebase.storage
 
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+    implementation 'com.google.android.libraries.places:places:3.3.0'
     implementation libs.play.services.location
 
     testImplementation libs.junit

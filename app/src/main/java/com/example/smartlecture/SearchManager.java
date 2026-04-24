@@ -6,23 +6,29 @@ import java.util.List;
 public class SearchManager {
     private List<ISearchable> searchableCollection;
 
-    public SearchManager(List<? extends ISearchable> collection) {
-        this.searchableCollection = (List<ISearchable>) collection;
+    public SearchManager(List<ISearchable> collection) {
+        this.searchableCollection = collection;
     }
 
-    // חיפוש חופשי (לפי טקסט)
+    /**
+     * Filters the collection based on a string query across all searchable fields.
+     */
     public List<ISearchable> search(String query) {
         List<ISearchable> results = new ArrayList<>();
-        if (query == null || query.isEmpty()) return searchableCollection;
+
+        if (query == null || query.isEmpty()) {
+            return searchableCollection;
+        }
 
         String lowerQuery = query.toLowerCase().trim();
 
         for (ISearchable item : searchableCollection) {
-            for (String field : item.getSearchableFields()) {
-                // הבונוס האמיתי: החיפוש בודק אם המילה קיימת בתוך השדה (למשל בתוך ה-SummaryText)
+            List<String> fields = item.getSearchableFields();
+
+            for (String field : fields) {
                 if (field != null && field.toLowerCase().contains(lowerQuery)) {
                     results.add(item);
-                    break;
+                    break; // Move to next item once a match is found
                 }
             }
         }

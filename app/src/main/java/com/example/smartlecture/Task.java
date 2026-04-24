@@ -6,22 +6,14 @@ import java.util.List;
 public class Task extends LearningEvent implements ISearchable {
     private boolean isCompleted;
     private int priorityScore;
-    private String location;
     private long remindAt;
 
-    private SearchManager searchManagerRef;
-
-
-
-    // בנאי ריק חובה עבור Firebase
     public Task() {
         super();
     }
 
-    // בנאי מלא לנוחות
     public Task(String eventID, String title, long timestamp, String userID, String location) {
-        super(eventID, title, timestamp, userID);
-        this.location = location;
+        super(eventID, title, timestamp, userID, location);
         this.isCompleted = false;
     }
 
@@ -29,33 +21,25 @@ public class Task extends LearningEvent implements ISearchable {
     public List<String> getSearchableFields() {
         List<String> fields = new ArrayList<>();
         fields.add(title);
-        fields.add(location);
+        fields.add(getLocation()); // הוספנו את המיקום לחיפוש
         return fields;
     }
 
     @Override
     public long getDueDate() {
-        return timestamp; // עבור משימה, ה-timestamp הוא דד-ליין
+        return timestamp;
     }
 
     public void setReminder(long time) {
         this.remindAt = time;
     }
 
-    // --- Getters & Setters ---
-
+    // Getters & Setters
     public boolean isCompleted() { return isCompleted; }
     public void setCompleted(boolean completed) { isCompleted = completed; }
-
     public int getPriorityScore() { return priorityScore; }
     public void setPriorityScore(int priorityScore) { this.priorityScore = priorityScore; }
-
-    public String getLocation() { return location; }
-    public void setLocation(String location) { this.location = location; }
-
     public long getRemindAt() { return remindAt; }
     public void setRemindAt(long remindAt) { this.remindAt = remindAt; }
-    public long getReminder() {
-        return remindAt;
-    }
+    public long getReminder() { return remindAt; }
 }

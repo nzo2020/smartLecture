@@ -83,17 +83,26 @@
         </LinearLayout>
 
         <!-- Location -->
-        <EditText
-            android:id="@+id/etEventLocation"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilEventLocation"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Location / Venue"
-            android:inputType="textPostalAddress"
-            android:background="@android:color/white"
-            android:padding="16dp"
             android:layout_marginBottom="12dp"
-            android:textSize="16sp"/>
+            android:hint="Location / Venue"
+            app:boxCornerRadiusBottomEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusTopStart="12dp">
 
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etEventLocation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:focusable="false"
+                android:clickable="true"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
         <!-- Description -->
         <EditText
             android:id="@+id/etEventDescription"

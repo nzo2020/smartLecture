@@ -83,31 +83,35 @@ public class ViewSummeryActivity extends AppCompatActivity {
             String uid = refAuth.getCurrentUser().getUid();
 
             lectureTitles.clear();
-            lectureTitles.add("טוען שיעורים...");
+            lectureTitles.add("Loading lessons...");
             adapter.notifyDataSetChanged();
 
+            // Fetching user object to get the 'name' field for the database path
             refUsers.child(uid).addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     User user = snapshot.getValue(User.class);
                     if (user != null) {
+                        // Ensure the User object has the UID correctly
+                        user.setUserID(uid);
+
                         user.fetchEvents(new User.OnEventsFetchListener() {
                             @Override
                             public void onEventsFetched(List<Lecture> events) {
                                 lectureList.clear();
                                 lectureTitles.clear();
 
-                                lectureTitles.add("בחר סיכום מהרשימה:");
+                                lectureTitles.add("Select a summary from the list:");
                                 lectureList.add(null);
 
                                 if (events.isEmpty()) {
-                                    lectureTitles.set(0, "לא נמצאו סיכומים");
+                                    lectureTitles.set(0, "No summaries found");
                                 } else {
                                     for (Lecture lecture : events) {
                                         lectureList.add(lecture);
                                         String title = (lecture.getTitle() != null && !lecture.getTitle().isEmpty())
-                                                ? lecture.getTitle() : "שיעור ללא כותרת";
-                                        String lecturer = (lecture.getLecturer() != null) ? lecture.getLecturer() : "מרצה לא ידוע";
+                                                ? lecture.getTitle() : "Untitled Lesson";
+                                        String lecturer = (lecture.getLecturer() != null) ? lecture.getLecturer() : "Unknown Lecturer";
 
                                         lectureTitles.add(title + " — " + lecturer);
                                     }
@@ -117,7 +121,7 @@ public class ViewSummeryActivity extends AppCompatActivity {
 
                             @Override
                             public void onError(String error) {
-                                Toast.makeText(ViewSummeryActivity.this, "שגיאה בטעינה: " + error, Toast.LENGTH_SHORT).show();
+                                Toast.makeText(ViewSummeryActivity.this, "Load Error: " + error, Toast.LENGTH_SHORT).show();
                             }
                         });
                     }
@@ -130,63 +134,55 @@ public class ViewSummeryActivity extends AppCompatActivity {
 
     private void displayLectureDetails(int position) {
         if (position == 0 || lectureList.get(position) == null) {
-            tvSummaryContent.setText("אנא בחר סיכום כדי לצפות בפרטים");
+            tvSummaryContent.setText("Please select a summary to view details");
             tvLinks.setText("");
             btnShare.setEnabled(false);
             return;
         }
 
         Lecture selected = lectureList.get(position);
-        tvSummaryContent.setText(selected.getSummaryText());
+        String fullSummary = selected.getSummaryText();
 
-        // 1. בניית הטקסט הגולמי
+        // ניקוי טקסט האירועים מהסיכום כדי שלא יופיע בתיבת הטקסט
+        if (fullSummary != null && fullSummary.contains("SMART_EVENTS_LIST:")) {
+            fullSummary = fullSummary.split("SMART_EVENTS_LIST:")[0].trim();
+        }
+
+        tvSummaryContent.setText(fullSummary);
+
         StringBuilder sb = new StringBuilder();
 
-        // הוספת קישורי ה-AI
+        // הצגת קישורים רלוונטיים מה-AI
         if (selected.getRelevantLinks() != null && !selected.getRelevantLinks().isEmpty()) {
-            sb.append("🔗 קישורים רלוונטיים:\n")
+            sb.append("🔗 Relevant Links:\n")
                     .append(selected.getRelevantLinks())
                     .append("\n\n");
         }
 
-        // חישוב המיקום לצביעה בכחול
+        // הוספת קישור להקלטה
         int startOfAudioText = sb.length();
-        String audioText = "🎙️ הקלטת השיעור זמינה בענן (לחץ כאן להאזנה)";
+        String audioText = "🎙️ Recording is available in the cloud (Click to listen)";
 
         if (selected.getAudioURL() != null && !selected.getAudioURL().isEmpty()) {
             sb.append(audioText);
         } else {
-            sb.append("❌ אין הקלטה זמינה");
+            sb.append("❌ No recording available");
         }
 
-        // 2. יצירת Spannable לעיצוב
         SpannableString spannable = new SpannableString(sb.toString());
 
+        // הגדרת הקישור להקלטה כקישור לחיץ כחול עם קו תחתי
         if (selected.getAudioURL() != null && !selected.getAudioURL().isEmpty()) {
-            // צביעה בכחול
-            spannable.setSpan(
-                    new ForegroundColorSpan(Color.BLUE),
-                    startOfAudioText,
-                    sb.length(),
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            );
+            spannable.setSpan(new ForegroundColorSpan(Color.BLUE), startOfAudioText, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            spannable.setSpan(new UnderlineSpan(), startOfAudioText, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
 
-            // הוספת קו תחתון
-            spannable.setSpan(
-                    new UnderlineSpan(),
-                    startOfAudioText,
-                    sb.length(),
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            );
-
-            // הגדרת לחיצה על ה-TextView
             tvLinks.setOnClickListener(v -> {
                 try {
                     Uri uri = Uri.parse(selected.getAudioURL());
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     startActivity(intent);
                 } catch (Exception e) {
-                    Toast.makeText(this, "שגיאה בפתיחת ההקלטה", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Error opening audio", Toast.LENGTH_SHORT).show();
                 }
             });
         } else {
@@ -195,7 +191,7 @@ public class ViewSummeryActivity extends AppCompatActivity {
 
         tvLinks.setText(spannable);
 
-        // 3. הפעלת Linkify לזיהוי כתובות אינטרנט של Gemini
+        // הפיכת הלינקים הלימודיים בתוך ה-Relevant Links ללחיצים אוטומטית
         Linkify.addLinks(tvLinks, Linkify.WEB_URLS);
 
         btnShare.setEnabled(true);
@@ -206,17 +202,17 @@ public class ViewSummeryActivity extends AppCompatActivity {
         if (selectedPos <= 0 || lectureList.get(selectedPos) == null) return;
 
         Lecture selected = lectureList.get(selectedPos);
-        String shareBody = "📖 סיכום שיעור: " + selected.getTitle() + "\n" +
-                "👨‍🏫 מרצה: " + selected.getLecturer() + "\n\n" +
-                "📝 סיכום:\n" + selected.getSummaryText() + "\n\n" +
-                "🔗 קישורים נוספים:\n" + selected.getRelevantLinks() + "\n\n" +
-                "🎙️ הקלטה:\n" + selected.getAudioURL();
+        String shareBody = "📖 Lesson Summary: " + selected.getTitle() + "\n" +
+                "👨‍🏫 Lecturer: " + selected.getLecturer() + "\n\n" +
+                "📝 Summary:\n" + selected.getSummaryText() + "\n\n" +
+                "🔗 Extra Links:\n" + selected.getRelevantLinks() + "\n\n" +
+                "🎙️ Audio:\n" + selected.getAudioURL();
 
         Intent sendIntent = new Intent();
         sendIntent.setAction(Intent.ACTION_SEND);
         sendIntent.putExtra(Intent.EXTRA_TEXT, shareBody);
         sendIntent.setType("text/plain");
 
-        startActivity(Intent.createChooser(sendIntent, "שתף סיכום שיעור"));
+        startActivity(Intent.createChooser(sendIntent, "Share Summary"));
     }
 }

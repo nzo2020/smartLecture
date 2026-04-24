@@ -56,26 +56,26 @@ public class SearchSummariesActivity extends AppCompatActivity {
         allLectures = new ArrayList<>();
         currentFilteredList = new ArrayList<>();
 
-        // אתחול רשימות לספינרים
+        // Initialize Spinner for Lecturers
         lecturersNames = new ArrayList<>();
         lecturersNames.add("All Lecturers");
         lecturerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lecturersNames);
         lecturerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerLecturer.setAdapter(lecturerAdapter);
 
+        // Initialize Spinner for Titles
         lectureTitles = new ArrayList<>();
         lectureTitles.add("All Titles");
         titleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lectureTitles);
         titleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerTitle.setAdapter(titleAdapter);
 
-        // אתחול האדפטר לרשימת התוצאות
+        // Initialize Results ListView
         listAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         lvSearchResults.setAdapter(listAdapter);
     }
 
     private void setupListeners() {
-        // האזנה לשינויים בספינרים
         AdapterView.OnItemSelectedListener filterListener = new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -88,7 +88,6 @@ public class SearchSummariesActivity extends AppCompatActivity {
         spinnerLecturer.setOnItemSelectedListener(filterListener);
         spinnerTitle.setOnItemSelectedListener(filterListener);
 
-        // האזנה להקלדה בשורת החיפוש
         etFreeSearch.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -111,14 +110,18 @@ public class SearchSummariesActivity extends AppCompatActivity {
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     User user = snapshot.getValue(User.class);
                     if (user != null) {
+                        // Crucial: Set the UID so fetchEvents knows the path
+                        user.setUserID(uid);
+
                         user.fetchEvents(new User.OnEventsFetchListener() {
                             @Override
                             public void onEventsFetched(List<Lecture> events) {
                                 allLectures.clear();
                                 allLectures.addAll(events);
 
-                                // אתחול מנהל החיפוש עם רשימת ההרצאות שנטענו
-                                searchManager = new SearchManager(allLectures);
+                                // Initialize search manager with the generic ISearchable list
+                                List<ISearchable> searchables = new ArrayList<>(allLectures);
+                                searchManager = new SearchManager(searchables);
 
                                 updateSpinnersData();
                                 performFiltering();
@@ -163,13 +166,13 @@ public class SearchSummariesActivity extends AppCompatActivity {
         String selLecturer = spinnerLecturer.getSelectedItem().toString();
         String selTitle = spinnerTitle.getSelectedItem().toString();
 
-        // סינון ראשוני באמצעות ה-SearchManager (חיפוש טקסט חופשי)
+        // Step 1: Filter by text query using SearchManager
         List<ISearchable> searchResults = searchManager.search(query);
 
         currentFilteredList.clear();
         List<String> displayStrings = new ArrayList<>();
 
-        // הצלבת תוצאות החיפוש עם בחירות הספינרים
+        // Step 2: Cross-reference with Spinner selections
         for (ISearchable item : searchResults) {
             Lecture lecture = (Lecture) item;
 
@@ -180,11 +183,10 @@ public class SearchSummariesActivity extends AppCompatActivity {
 
             if (matchesLecturer && matchesTitle) {
                 currentFilteredList.add(lecture);
-                displayStrings.add("📖 " + lecture.getTitle() + "\n👨‍🏫 " + lecture.getLecturer());
+                displayStrings.add("📖 Title: " + lecture.getTitle() + "\n👨‍🏫 Lecturer: " + lecture.getLecturer());
             }
         }
 
-        // עדכון הרשימה המוצגת למשתמש
         listAdapter.clear();
         listAdapter.addAll(displayStrings);
         listAdapter.notifyDataSetChanged();
