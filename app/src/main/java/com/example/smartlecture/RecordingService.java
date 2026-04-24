@@ -5,26 +5,26 @@ import android.content.Context;
 import android.content.Intent;
 import android.media.MediaRecorder;
 import android.os.*;
+import android.provider.CalendarContract;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import com.example.smartlecture.Gemini.*;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ServerValue;
+import com.google.firebase.database.*;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import java.io.File;
 import java.nio.file.Files;
-import java.util.Locale; // הוסף את השורה הזו
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 public class RecordingService extends Service {
     private MediaRecorder recorder;
     private String eventId, userId, filePath, teacherName, lessonTitle, locationName;
     private boolean isPublic;
+    private long recordingStartTime;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -33,7 +33,6 @@ public class RecordingService extends Service {
 
         if ("START_RECORDING".equals(action)) {
             setupParameters(intent);
-            // Foreground notification during recording
             startForeground(1, getNotification("Recording lesson in progress..."));
             startRecording();
         } else if ("STOP_RECORDING".equals(action)) {
@@ -49,6 +48,8 @@ public class RecordingService extends Service {
         teacherName = intent.getStringExtra("TEACHER");
         lessonTitle = intent.getStringExtra("LESSON_TITLE");
         locationName = intent.getStringExtra("LOCATION");
+        // מקבלים את זמן תחילת ההקלטה המדויק מה-Activity לצורך סנכרון
+        recordingStartTime = intent.getLongExtra("START_TIME", System.currentTimeMillis());
         filePath = getExternalCacheDir().getAbsolutePath() + "/" + eventId + ".mp4";
     }
 
@@ -71,11 +72,11 @@ public class RecordingService extends Service {
             try {
                 recorder.stop();
             } catch (RuntimeException e) {
-                Log.e("SmartLecture", "Stop failed (recording might be too short)", e);
+                Log.e("SmartLecture", "Stop failed");
             }
             recorder.release();
             recorder = null;
-            // Update notification to show processing
+
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             nm.notify(1, getNotification("Processing and analyzing lesson..."));
             uploadFileToStorage();
@@ -97,90 +98,61 @@ public class RecordingService extends Service {
         try {
             byte[] bytes = Files.readAllBytes(file.toPath());
             String todayDate = new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new java.util.Date());
-            String defaultFutureDate = getOneWeekFromNow();
+            String defaultDate = getOneWeekFromNow();
 
             String prompt = "Summarize this lesson professionally. " +
-                    "Task: Identify ALL future deadlines, exams, or assignments mentioned. " +
-                    "For each one, create a concise, smart title. " +
-                    "CRITICAL RULES FOR MISSING INFO: " +
-                    "1. If no specific date is mentioned, use: " + defaultFutureDate + ". " +
-                    "2. If no specific time is mentioned, use 09:00. " +
-                    "3. If no specific location is mentioned, use exactly: 'No updated location'. " +
                     "Today's date is: " + todayDate + ". " +
-                    "List them under 'SMART_EVENTS_LIST:' " +
-                    "Format: [Smart Title | DD/MM/YYYY | HH:mm | Location] " +
-                    "Example 1 (With Location): [History Exam | 12/05/2026 | 10:30 | Room 201]. " + // הכותרת היא היסטוריה, המיקום הוא חדר 201
-                    "Example 2 (No Location): [Math Assignment | 19/05/2026 | 09:00 | No updated location]. " + // הכותרת היא מתמטיקה, המיקום מעודכן שאין
+                    "Identify ALL future deadlines or exams. Format: [Title | DD/MM/YYYY | HH:mm | Location]. " +
+                    "Use " + defaultDate + " if no date mentioned. " +
+                    "List under 'SMART_EVENTS_LIST:' " +
                     "Finally, add 'Relevant Links:' and provide 3 links.";
+
             GeminiManager.getInstance().sendTextWithFilePrompt(prompt, bytes, "audio/mp4", new GeminiCallback() {
                 @Override
                 public void onSuccess(String result) {
                     String summary = result, links = "";
-
                     if (result.contains("Relevant Links")) {
                         String[] parts = result.split("Relevant Links:?");
                         summary = parts[0].trim();
                         if (parts.length > 1) links = parts[1].trim();
                     }
-
-                    // קריאה לאלגוריתם המעודכן שמטפל במספר אירועים
-                    processSmartEvents(result);
-
                     saveDataToFirebase(summary, links, audioUrl);
                 }
                 @Override public void onFailure(Throwable e) {
                     saveDataToFirebase("AI analysis failed", "", audioUrl);
                 }
             });
-        } catch (Exception e) {
-            stopSelf();
-        }
-    }
-
-    private String getOneWeekFromNow() {
-        java.util.Calendar cal = java.util.Calendar.getInstance();
-        cal.add(java.util.Calendar.DAY_OF_YEAR, 7);
-        return new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(cal.getTime());
+        } catch (Exception e) { stopSelf(); }
     }
 
     private void saveDataToFirebase(String summary, String links, String url) {
-        String userName = FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
-        if (userName == null || userName.isEmpty()) userName = "Student";
-
         DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference();
-
         if (isPublic) {
-            // שלב 1: חיפוש רוחבי כדי למצוא אם יש כבר סיכום קיים במיקום ובזמן הזה
-            dbRef.child("Lectures/pub_true").addListenerForSingleValueEvent(new com.google.firebase.database.ValueEventListener() {
+            dbRef.child("Lectures/pub_true").addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
-                public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
-                    String bestSummaryFound = summary;
-                    String bestLinksFound = links;
+                public void onDataChange(DataSnapshot snapshot) {
+                    String bestSummary = summary;
+                    String bestLinks = links;
 
-                    for (com.google.firebase.database.DataSnapshot userNode : snapshot.getChildren()) {
-                        for (com.google.firebase.database.DataSnapshot lectureNode : userNode.getChildren()) {
-                            String existingLoc = lectureNode.child("location").getValue(String.class);
-                            Long existingTime = lectureNode.child("timestamp").getValue(Long.class);
+                    for (DataSnapshot userNode : snapshot.getChildren()) {
+                        for (DataSnapshot lectureNode : userNode.getChildren()) {
+                            String exLoc = lectureNode.child("location").getValue(String.class);
+                            Long exStart = lectureNode.child("recordingStartTime").getValue(Long.class);
 
-                            // בדיקת מיקום וזמן (טווח של 5 דקות)
-                            if (locationName != null && locationName.equals(existingLoc) &&
-                                    existingTime != null && Math.abs(System.currentTimeMillis() - existingTime) < 300000) {
+                            if (exStart != null && locationName != null && locationName.equals(exLoc) &&
+                                    Math.abs(recordingStartTime - exStart) < 300000) {
 
-                                String existingSum = lectureNode.child("summaryText").getValue(String.class);
-                                if (existingSum != null && existingSum.length() > bestSummaryFound.length()) {
-                                    bestSummaryFound = existingSum;
-                                    bestLinksFound = lectureNode.child("relevantLinks").getValue(String.class);
+                                String exSum = lectureNode.child("summaryText").getValue(String.class);
+                                if (exSum != null && exSum.length() > bestSummary.length()) {
+                                    bestSummary = exSum;
+                                    bestLinks = lectureNode.child("relevantLinks").getValue(String.class);
                                 }
                             }
                         }
                     }
-                    // שלב 2: שמירה באמצעות טרנזקציה כדי למנוע התנגשות במילישנייה האחרונה
-                    executeFirebaseSaveWithTransaction(bestSummaryFound, bestLinksFound, url);
+                    executeFirebaseSaveWithTransaction(bestSummary, bestLinks, url);
                 }
-
-                @Override public void onCancelled(com.google.firebase.database.DatabaseError error) {
-                    executeFirebaseSaveWithTransaction(summary, links, url);
-                }
+                @Override public void onCancelled(DatabaseError error) { executeFirebaseSaveWithTransaction(summary, links, url); }
             });
         } else {
             executeFirebaseSaveWithTransaction(summary, links, url);
@@ -195,10 +167,9 @@ public class RecordingService extends Service {
         String dbPath = isPublic ? "Lectures/pub_true/" + userName + "/" + eventId
                 : "Lectures/pub_false/" + userId + "/" + userName + "/" + eventId;
 
-        dbRef.child(dbPath).runTransaction(new com.google.firebase.database.Transaction.Handler() {
+        dbRef.child(dbPath).runTransaction(new Transaction.Handler() {
             @Override
-            public com.google.firebase.database.Transaction.Result doTransaction(com.google.firebase.database.MutableData mutableData) {
-                // יצירת מפת הנתונים לשמירה
+            public Transaction.Result doTransaction(MutableData mutableData) {
                 Map<String, Object> data = new HashMap<>();
                 data.put("title", lessonTitle);
                 data.put("lecturer", teacherName);
@@ -207,19 +178,24 @@ public class RecordingService extends Service {
                 data.put("relevantLinks", linksToSave);
                 data.put("audioURL", url);
                 data.put("timestamp", ServerValue.TIMESTAMP);
+                data.put("recordingStartTime", recordingStartTime);
                 data.put("userID", userId);
                 data.put("status", isPublic ? "ready" : "draft");
 
                 mutableData.setValue(data);
-                return com.google.firebase.database.Transaction.success(mutableData);
+                return Transaction.success(mutableData);
             }
 
             @Override
-            public void onComplete(com.google.firebase.database.DatabaseError error, boolean committed, com.google.firebase.database.DataSnapshot snapshot) {
+            public void onComplete(DatabaseError error, boolean committed, DataSnapshot snapshot) {
                 if (committed) {
+                    // כאן קורה האיחוד הסופי של התזכורות
+                    processSmartEvents(summaryToSave);
+
                     sendBroadcast(new Intent("RECORDING_FINISHED")
                             .putExtra("summaryText", summaryToSave)
                             .putExtra("relevantLinks", linksToSave));
+
                     NotificationHelper.showSummaryReadyNotification(getApplicationContext(), teacherName);
                     stopSelf();
                 }
@@ -227,93 +203,89 @@ public class RecordingService extends Service {
         });
     }
 
-    private Notification getNotification(String text) {
-        String channelId = "record_chan";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null && nm.getNotificationChannel(channelId) == null) {
-                nm.createNotificationChannel(new NotificationChannel(channelId, "Recording Service", NotificationManager.IMPORTANCE_LOW));
-            }
-        }
-        return new NotificationCompat.Builder(this, channelId)
-                .setContentTitle("Smart Lecture")
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setOngoing(true)
-                .build();
-    }
-
     private void processSmartEvents(String fullText) {
         if (!fullText.contains("SMART_EVENTS_LIST:")) return;
-
         try {
-            // חיתוך הטקסט כך שנקבל רק את רשימת האירועים
             String listPart = fullText.split("SMART_EVENTS_LIST:")[1].split("Relevant Links")[0].trim();
             String[] lines = listPart.split("\n");
-
             for (String line : lines) {
                 if (line.contains("|") && line.contains("[") && line.contains("]")) {
                     parseAndSaveSingleEvent(line);
                 }
             }
-        } catch (Exception e) {
-            Log.e("SmartLecture", "Error processing events list", e);
-        }
+        } catch (Exception e) { Log.e("SmartLecture", "Error processing events", e); }
     }
 
     private void parseAndSaveSingleEvent(String eventLine) {
         try {
             String cleanLine = eventLine.replace("[", "").replace("]", "");
             String[] details = cleanLine.split("\\|");
-
             if (details.length >= 3) {
-                String smartTitle = details[0].trim(); // כאן נשמר "History Exam"
+                String title = details[0].trim();
                 String dateStr = details[1].trim();
                 String timeStr = details[2].trim();
-
-                // בדיקה אם יש מיקום (חלק רביעי), אם לא - שמים את הודעת המחדל
-                String aiLocation = (details.length >= 4) ? details[3].trim() : "No updated location";
+                String loc = (details.length >= 4) ? details[3].trim() : "No updated location";
 
                 java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault());
                 java.util.Date parsedDate = sdf.parse(dateStr + " " + timeStr);
 
                 if (parsedDate != null && parsedDate.after(new java.util.Date())) {
-                    String subEventId = "task_" + System.currentTimeMillis() + "_" + Math.abs(smartTitle.hashCode());
-
-                    // שמירה ל-Firebase: הכותרת תהיה "History Exam" והמיקום יהיה "No updated location"
-                    saveSingleReminderToFirebase(subEventId, smartTitle, parsedDate.getTime(), aiLocation);
+                    saveSingleReminderToFirebase(title, parsedDate.getTime(), loc);
                 }
             }
-        } catch (Exception e) {
-            Log.e("SmartLecture", "Failed to parse: " + eventLine, e);
-        }
+        } catch (Exception e) { Log.e("SmartLecture", "Parse failed", e); }
     }
 
-    private void saveSingleReminderToFirebase(String id, String title, long timestamp, String specificLocation) {
-        // התייחסות לנתיב ב-Firebase: reminders -> userId -> eventId
-        DatabaseReference remRef = FirebaseDatabase.getInstance().getReference("reminders")
-                .child(userId)
-                .child(id);
+    private void saveSingleReminderToFirebase(String title, long timestamp, String loc) {
+        String uniqueId = "task_" + Math.abs((title + timestamp).hashCode());
+        DatabaseReference remRef = FirebaseDatabase.getInstance().getReference("reminders").child(userId).child(uniqueId);
 
-        Map<String, Object> reminderData = new HashMap<>();
-        reminderData.put("eventID", id);
-        reminderData.put("title", title);
-        reminderData.put("remindAt", timestamp);
+        Map<String, Object> rData = new HashMap<>();
+        rData.put("eventID", uniqueId);
+        rData.put("title", title);
+        rData.put("remindAt", timestamp);
+        rData.put("location", loc);
 
-        // כאן אנחנו שומרים את המיקום הספציפי (או את הכתובת שנאמרה, או "No updated location")
-        reminderData.put("location", specificLocation);
-
-        remRef.setValue(reminderData).addOnSuccessListener(aVoid -> {
-            // יצירת אובייקט Task עם המיקום המעודכן לצורך הפעלת ההתראה בטלפון
-            Task task = new Task(id, title, timestamp, userId, specificLocation);
-
-            // שליחת המשימה לניהול ההתראות במערכת
+        remRef.setValue(rData).addOnSuccessListener(aVoid -> {
+            // 1. התראה לנייד
+            Task task = new Task(uniqueId, title, timestamp, userId, loc);
             new ReminderManager(getApplicationContext(), new ArrayList<>()).addTask(task);
 
-            Log.d("SmartLecture", "Smart Event Saved & Scheduled: " + title + " at " + specificLocation);
-        }).addOnFailureListener(e -> {
-            Log.e("SmartLecture", "Failed to save reminder to Firebase", e);
+            // 2. גוגל קלנדר
+            addEventToGoogleCalendar(title, timestamp, loc);
         });
+    }
+
+    private void addEventToGoogleCalendar(String title, long startMillis, String loc) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_INSERT)
+                    .setData(CalendarContract.Events.CONTENT_URI)
+                    .putExtra(CalendarContract.Events.TITLE, title)
+                    .putExtra(CalendarContract.Events.EVENT_LOCATION, loc)
+                    .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+                    .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, startMillis + 3600000)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) { Log.e("Calendar", "Fail", e); }
+    }
+
+    private Notification getNotification(String text) {
+        String cid = "record_chan";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null && nm.getNotificationChannel(cid) == null) {
+                nm.createNotificationChannel(new NotificationChannel(cid, "Recording", NotificationManager.IMPORTANCE_LOW));
+            }
+        }
+        return new NotificationCompat.Builder(this, cid)
+                .setContentTitle("Smart Lecture").setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now).setOngoing(true).build();
+    }
+
+    private String getOneWeekFromNow() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.add(java.util.Calendar.DAY_OF_YEAR, 7);
+        return new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(cal.getTime());
     }
 
     @Override public IBinder onBind(Intent i) { return null; }
