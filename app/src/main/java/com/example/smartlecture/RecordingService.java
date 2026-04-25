@@ -280,31 +280,7 @@ public class RecordingService extends Service {
             // 1. התראה לנייד
             Task task = new Task(uniqueId, title, timestamp, userId, loc);
             new ReminderManager(getApplicationContext(), new ArrayList<>()).addTask(task);
-
-            // 2. גוגל קלנדר
-            addEventToGoogleCalendar(title, timestamp, loc);
         });
-    }
-
-    private void addEventToGoogleCalendar(String title, long startMillis, String loc) {
-        try {
-            ContentResolver cr = getContentResolver();
-            ContentValues values = new ContentValues();
-            values.put(CalendarContract.Events.DTSTART, startMillis);
-            values.put(CalendarContract.Events.DTEND, startMillis + 3600000); // שעה אחת
-            values.put(CalendarContract.Events.TITLE, title);
-            values.put(CalendarContract.Events.EVENT_LOCATION, loc);
-            values.put(CalendarContract.Events.CALENDAR_ID, 1); // בד"כ יומן ברירת המחדל
-            values.put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
-
-            // בדיקת הרשאות לפני הכתיבה
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) {
-                cr.insert(CalendarContract.Events.CONTENT_URI, values);
-                Log.d("Calendar", "Event added automatically: " + title);
-            }
-        } catch (Exception e) {
-            Log.e("Calendar", "Failed to add event automatically", e);
-        }
     }
 
     private Notification getNotification(String text) {
