@@ -38,6 +38,14 @@ public class RecordingService extends Service {
         } else if ("STOP_RECORDING".equals(action)) {
             stopRecording();
         }
+        // --- הוסף את החלק הזה ---
+        else if ("UPDATE_EVENTS_FROM_SUMMARY".equals(action)) {
+            String newSummary = intent.getStringExtra("NEW_SUMMARY");
+            userId = intent.getStringExtra("USER_ID"); // נדרש לשמירת התזכורות
+            if (newSummary != null) {
+                processSmartEvents(newSummary);
+            }
+        }
         return START_STICKY;
     }
 
@@ -100,12 +108,18 @@ public class RecordingService extends Service {
             String todayDate = new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new java.util.Date());
             String defaultDate = getOneWeekFromNow();
 
-            String prompt = "Summarize this lesson professionally. " +
-                    "Today's date is: " + todayDate + ". " +
-                    "Identify ALL future deadlines or exams. Format: [Title | DD/MM/YYYY | HH:mm | Location]. " +
-                    "Use " + defaultDate + " if no date mentioned. " +
-                    "List under 'SMART_EVENTS_LIST:' " +
-                    "Finally, add 'Relevant Links:' and provide 3 links.";
+            String prompt = "Summarize this lesson professionally and concisely. \n" +
+                    "Today's date is: " + todayDate + ". \n\n" +
+                    "Task 1: Provide a clear and organized summary of the main topics discussed.\n\n" +
+                    "Task 2: Identify ALL future deadlines, exams, or assignments mentioned in the audio. \n" +
+                    "CRITICAL: List these events under the header 'SMART_EVENTS_LIST:' using the following exact format:\n" +
+                    "[Event Title | DD/MM/YYYY | HH:mm | Location]\n\n" +
+                    "Guidelines for Task 2:\n" +
+                    "- If no date is mentioned, use " + defaultDate + ".\n" +
+                    "- If no time is mentioned, use 09:00.\n" +
+                    "- If no location is mentioned, use 'Classroom'.\n" +
+                    "- Example: [Math Exam | 15/05/2026 | 10:00 | Hall A]\n\n" +
+                    "Task 3: Finally, add a section called 'Relevant Links:' and provide 3 educational links related to the lesson's topic.";
 
             GeminiManager.getInstance().sendTextWithFilePrompt(prompt, bytes, "audio/mp4", new GeminiCallback() {
                 @Override
@@ -193,6 +207,7 @@ public class RecordingService extends Service {
                     processSmartEvents(summaryToSave);
 
                     sendBroadcast(new Intent("RECORDING_FINISHED")
+                            .putExtra("EVENT_ID", eventId) // <--- הוסף את השורה הזו
                             .putExtra("summaryText", summaryToSave)
                             .putExtra("relevantLinks", linksToSave));
 

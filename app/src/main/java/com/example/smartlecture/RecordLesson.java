@@ -21,6 +21,12 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
 import java.util.*;
 
 public class RecordLesson extends AppCompatActivity {
@@ -35,6 +41,9 @@ public class RecordLesson extends AppCompatActivity {
     private FusedLocationProviderClient fusedLocationClient;
     private String finalLocationName = "Unknown Location";
 
+    private ValueEventListener sharedSummaryListener;
+    private DatabaseReference currentLectureRef;
+    private String lastProcessedSummary = "";
     // Google Places Autocomplete Launcher
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -110,6 +119,7 @@ public class RecordLesson extends AppCompatActivity {
         intent.putExtra("TEACHER", etTeacherName.getText().toString());
         intent.putExtra("LESSON_TITLE", etLessonTitle.getText().toString());
         intent.putExtra("LOCATION", finalLocationName);
+        intent.putExtra("START_TIME", System.currentTimeMillis()); // <--- הוסף את זה
 
         ContextCompat.startForegroundService(this, intent);
 
@@ -172,12 +182,17 @@ public class RecordLesson extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("RECORDING_FINISHED".equals(intent.getAction())) {
+                String eventId = intent.getStringExtra("EVENT_ID");
                 String summary = intent.getStringExtra("summaryText");
                 String links = intent.getStringExtra("relevantLinks");
+
                 tvLessonSummary.setText(summary + "\n\n🔗 Links:\n" + links);
                 Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
                 btnStart.setEnabled(true);
-                Toast.makeText(context, "Summary is ready!", Toast.LENGTH_LONG).show();
+
+                if (swPublicAccess.isChecked() && eventId != null) {
+                    startListeningForSharedUpdates(eventId);
+                }
             }
         }
     };
@@ -191,13 +206,49 @@ public class RecordLesson extends AppCompatActivity {
         btnStop.setEnabled(false);
     }
 
+    private void startListeningForSharedUpdates(String eventId) {
+        String userName = FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
+        if (userName == null) userName = "Student";
+
+        // נתיב ההרצאה ב-Database
+        currentLectureRef = FirebaseDatabase.getInstance().getReference()
+                .child("Lectures/pub_true").child(userName).child(eventId);
+
+        sharedSummaryListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String summary = snapshot.child("summaryText").getValue(String.class);
+                    String links = snapshot.child("relevantLinks").getValue(String.class);
+
+                    // אם הגיע סיכום חדש שהוא שונה ממה שיש לנו כרגע
+                    if (summary != null && !summary.equals(lastProcessedSummary)) {
+                        tvLessonSummary.setText(summary + "\n\n🔗 Links:\n" + links);
+                        Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
+
+                        // עדכון האירועים ביומן לפי הסיכום החדש
+                        Intent intent = new Intent(RecordLesson.this, RecordingService.class);
+                        intent.setAction("UPDATE_EVENTS_FROM_SUMMARY");
+                        intent.putExtra("NEW_SUMMARY", summary);
+                        intent.putExtra("USER_ID", FirebaseAuth.getInstance().getCurrentUser().getUid());
+                        startService(intent);
+
+                        lastProcessedSummary = summary;
+                        Toast.makeText(RecordLesson.this, "Better summary synced from peers!", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+            @Override public void onCancelled(DatabaseError error) {}
+        };
+        currentLectureRef.addValueEventListener(sharedSummaryListener);
+    }
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            unregisterReceiver(statusReceiver);
-        } catch (Exception e) {
-            // Receiver already unregistered
+        try { unregisterReceiver(statusReceiver); } catch (Exception e) {}
+
+        if (currentLectureRef != null && sharedSummaryListener != null) {
+            currentLectureRef.removeEventListener(sharedSummaryListener);
         }
     }
 }
