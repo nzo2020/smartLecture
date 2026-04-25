@@ -1,12 +1,18 @@
 package com.example.smartlecture;
 
+import android.Manifest;
 import android.app.*;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
 import android.os.*;
 import android.provider.CalendarContract;
 import android.util.Log;
+
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import com.example.smartlecture.Gemini.*;
 import com.google.firebase.auth.FirebaseAuth;
@@ -19,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 
 public class RecordingService extends Service {
     private MediaRecorder recorder;
@@ -203,11 +210,19 @@ public class RecordingService extends Service {
             @Override
             public void onComplete(DatabaseError error, boolean committed, DataSnapshot snapshot) {
                 if (committed) {
-                    // כאן קורה האיחוד הסופי של התזכורות
+                    // 1. קודם כל מעבדים את האירועים החכמים (מה שכבר יש לך)
                     processSmartEvents(summaryToSave);
 
+                    // 2. עדכון המונה בנתיב המדויק לפי המבנה שלך
+                    DatabaseReference userRef = FirebaseDatabase.getInstance()
+                            .getReference("users") // שימי לב שזה users באותיות קטנות לפי המבנה שלך
+                            .child(userId);
+
+                    userRef.child("totalLectures").setValue(ServerValue.increment(1));
+
+                    // 3. שליחת ה-Broadcast וסיום ה-Service
                     sendBroadcast(new Intent("RECORDING_FINISHED")
-                            .putExtra("EVENT_ID", eventId) // <--- הוסף את השורה הזו
+                            .putExtra("EVENT_ID", eventId)
                             .putExtra("summaryText", summaryToSave)
                             .putExtra("relevantLinks", linksToSave));
 
@@ -273,15 +288,23 @@ public class RecordingService extends Service {
 
     private void addEventToGoogleCalendar(String title, long startMillis, String loc) {
         try {
-            Intent intent = new Intent(Intent.ACTION_INSERT)
-                    .setData(CalendarContract.Events.CONTENT_URI)
-                    .putExtra(CalendarContract.Events.TITLE, title)
-                    .putExtra(CalendarContract.Events.EVENT_LOCATION, loc)
-                    .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
-                    .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, startMillis + 3600000)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (Exception e) { Log.e("Calendar", "Fail", e); }
+            ContentResolver cr = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(CalendarContract.Events.DTSTART, startMillis);
+            values.put(CalendarContract.Events.DTEND, startMillis + 3600000); // שעה אחת
+            values.put(CalendarContract.Events.TITLE, title);
+            values.put(CalendarContract.Events.EVENT_LOCATION, loc);
+            values.put(CalendarContract.Events.CALENDAR_ID, 1); // בד"כ יומן ברירת המחדל
+            values.put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
+
+            // בדיקת הרשאות לפני הכתיבה
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) {
+                cr.insert(CalendarContract.Events.CONTENT_URI, values);
+                Log.d("Calendar", "Event added automatically: " + title);
+            }
+        } catch (Exception e) {
+            Log.e("Calendar", "Failed to add event automatically", e);
+        }
     }
 
     private Notification getNotification(String text) {

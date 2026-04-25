@@ -171,8 +171,25 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     private boolean checkPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, 200);
+            permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.WRITE_CALENDAR);
+        }
+
+        // הוספת הרשאת התראות לאנדרואיד 13 ומעלה
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+
+        if (!permissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissionsNeeded.toArray(new String[0]), 200);
             return false;
         }
         return true;
@@ -207,48 +224,71 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     private void startListeningForSharedUpdates(String eventId) {
-        String userName = FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
-        if (userName == null) userName = "Student";
-
-        // נתיב ההרצאה ב-Database
-        currentLectureRef = FirebaseDatabase.getInstance().getReference()
-                .child("Lectures/pub_true").child(userName).child(eventId);
+        // מאזינים לכל ההרצאות הציבוריות של כל המשתמשים
+        DatabaseReference allPublicRef = FirebaseDatabase.getInstance().getReference().child("Lectures/pub_true");
 
         sharedSummaryListener = new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
-                if (snapshot.exists()) {
-                    String summary = snapshot.child("summaryText").getValue(String.class);
-                    String links = snapshot.child("relevantLinks").getValue(String.class);
+                if (!snapshot.exists()) return;
 
-                    // אם הגיע סיכום חדש שהוא שונה ממה שיש לנו כרגע
-                    if (summary != null && !summary.equals(lastProcessedSummary)) {
-                        tvLessonSummary.setText(summary + "\n\n🔗 Links:\n" + links);
-                        Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
+                String bestSummaryFound = tvLessonSummary.getText().toString();
+                String bestLinksFound = "";
+                boolean foundBetter = false;
 
-                        // עדכון האירועים ביומן לפי הסיכום החדש
-                        Intent intent = new Intent(RecordLesson.this, RecordingService.class);
-                        intent.setAction("UPDATE_EVENTS_FROM_SUMMARY");
-                        intent.putExtra("NEW_SUMMARY", summary);
-                        intent.putExtra("USER_ID", FirebaseAuth.getInstance().getCurrentUser().getUid());
-                        startService(intent);
+                for (DataSnapshot userNode : snapshot.getChildren()) {
+                    for (DataSnapshot lectureNode : userNode.getChildren()) {
+                        // בודקים אם זו הרצאה "תאומה" (אותו מיקום וזמן קרוב)
+                        String exLoc = lectureNode.child("location").getValue(String.class);
+                        Long exStart = lectureNode.child("recordingStartTime").getValue(Long.class);
 
-                        lastProcessedSummary = summary;
-                        Toast.makeText(RecordLesson.this, "Better summary synced from peers!", Toast.LENGTH_SHORT).show();
+                        if (exStart != null && finalLocationName.equals(exLoc) &&
+                                Math.abs(startTime - exStart) < 300000) { // סטייה של עד 5 דקות
+
+                            String remoteSummary = lectureNode.child("summaryText").getValue(String.class);
+                            String remoteLinks = lectureNode.child("relevantLinks").getValue(String.class);
+
+                            // אם מצאנו סיכום ארוך יותר ממה שמוצג כרגע על המסך
+                            if (remoteSummary != null && remoteSummary.length() > bestSummaryFound.length()) {
+                                bestSummaryFound = remoteSummary;
+                                bestLinksFound = remoteLinks;
+                                foundBetter = true;
+                            }
+                        }
                     }
                 }
+
+                if (foundBetter && !bestSummaryFound.equals(lastProcessedSummary)) {
+                    // עדכון המסך בסיכום הטוב יותר
+                    tvLessonSummary.setText(bestSummaryFound + "\n\n🔗 Links:\n" + bestLinksFound);
+                    Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
+
+                    // עדכון האירועים ביומן לפי הסיכום החדש
+                    Intent intent = new Intent(RecordLesson.this, RecordingService.class);
+                    intent.setAction("UPDATE_EVENTS_FROM_SUMMARY");
+                    intent.putExtra("NEW_SUMMARY", bestSummaryFound);
+                    intent.putExtra("USER_ID", FirebaseAuth.getInstance().getCurrentUser().getUid());
+                    startService(intent);
+
+                    lastProcessedSummary = bestSummaryFound;
+                    Toast.makeText(RecordLesson.this, "Better summary synced from peers! ✨", Toast.LENGTH_SHORT).show();
+                }
             }
+
             @Override public void onCancelled(DatabaseError error) {}
         };
-        currentLectureRef.addValueEventListener(sharedSummaryListener);
+
+        // חשוב: להשתמש ב-allPublicRef ולא ב-currentLectureRef
+        allPublicRef.addValueEventListener(sharedSummaryListener);
     }
     @Override
     protected void onDestroy() {
         super.onDestroy();
         try { unregisterReceiver(statusReceiver); } catch (Exception e) {}
 
-        if (currentLectureRef != null && sharedSummaryListener != null) {
-            currentLectureRef.removeEventListener(sharedSummaryListener);
+        if (sharedSummaryListener != null) {
+            FirebaseDatabase.getInstance().getReference().child("Lectures/pub_true")
+                    .removeEventListener(sharedSummaryListener);
         }
     }
 }

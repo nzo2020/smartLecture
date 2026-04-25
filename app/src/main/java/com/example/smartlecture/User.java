@@ -18,7 +18,6 @@ public class User {
     private String email;
     private String name;
     private int totalLectures;
-    private int completedTasks;
 
     // רשימה פנימית השומרת את האירועים שנמשכו
     private List<Lecture> learningEvents = new ArrayList<>();
@@ -36,7 +35,6 @@ public class User {
         this.email = email;
         this.name = name;
         this.totalLectures = 0;
-        this.completedTasks = 0;
     }
 
     /**
@@ -148,9 +146,6 @@ public class User {
 
     public int getTotalLectures() { return totalLectures; }
     public void setTotalLectures(int totalLectures) { this.totalLectures = totalLectures; }
-
-    public int getCompletedTasks() { return completedTasks; }
-    public void setCompletedTasks(int completedTasks) { this.completedTasks = completedTasks; }
 
     public List<Lecture> getLearningEvents() { return learningEvents; }
     public void setLearningEvents(List<Lecture> learningEvents) { this.learningEvents = learningEvents; }
