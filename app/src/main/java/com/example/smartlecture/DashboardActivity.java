@@ -6,6 +6,7 @@ import static com.example.smartlecture.FBRef.refUsers;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -53,35 +54,23 @@ public class DashboardActivity extends AppCompatActivity {
         if (refAuth.getCurrentUser() != null) {
             String uid = refAuth.getCurrentUser().getUid();
 
-            // שלב 1: משיכת אובייקט המשתמש הבסיסי
-            refUsers.child(uid).addListenerForSingleValueEvent(new ValueEventListener() {
+            refUsers.child(uid).addValueEventListener(new ValueEventListener() {
                 @Override
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     if (snapshot.exists()) {
-                        User user = snapshot.getValue(User.class);
-                        if (user != null) {
-                            tvWelcome.setText("Hello, " + user.getName() + " 👋");
+                        String name = snapshot.child("name").getValue(String.class);
+                        tvWelcome.setText("Hello, " + (name != null ? name : "Student") + " 👋");
 
-                            // שלב 2: שימוש בפעולה החדשה בתוך מחלקת User למשיכת ההרצאות
-                            user.fetchEvents(new User.OnEventsFetchListener() {
-                                @Override
-                                public void onEventsFetched(List<Lecture> events) {
-                                    // עדכון ה-UI עם כמות ההרצאות האמיתית שנמשכה מהענן
-                                    tvStats.setText("Stats: " + events.size() + " Lectures Saved");
-                                }
+                        Long total = snapshot.child("totalLectures").getValue(Long.class);
+                        if (total == null) total = 0L;
 
-                                @Override
-                                public void onError(String error) {
-                                    tvStats.setText("Stats: Error loading count");
-                                }
-                            });
-                        }
+                        tvStats.setText("Stats: " + total + " Lectures Saved");
                     }
                 }
 
                 @Override
                 public void onCancelled(@NonNull DatabaseError error) {
-                    Toast.makeText(DashboardActivity.this, "Error loading user profile", Toast.LENGTH_SHORT).show();
+                    Log.e("Dashboard", "Error loading data: " + error.getMessage());
                 }
             });
         }
