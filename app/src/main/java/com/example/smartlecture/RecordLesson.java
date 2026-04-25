@@ -177,6 +177,7 @@ public class RecordLesson extends AppCompatActivity {
             permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
         }
 
+
         // הוספת הרשאת התראות לאנדרואיד 13 ומעלה
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
