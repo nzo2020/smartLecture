@@ -27,6 +27,7 @@ import com.google.firebase.auth.UserProfileChangeRequest;
 
 public class RegiserActivity extends AppCompatActivity {
 
+    // רכיבי קלט וטקסט מה-XML
     private EditText eTName, eTEmail, eTPass, eTConfirmPass;
     private TextView tvStatusMsg;
 
@@ -35,7 +36,7 @@ public class RegiserActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_register);
 
-        // אתחול הרכיבים
+        // אתחול הרכיבים לפי ה-ID שלהם
         eTName = findViewById(R.id.etName);
         eTEmail = findViewById(R.id.etEmail);
         eTPass = findViewById(R.id.etPassword);
@@ -43,58 +44,61 @@ public class RegiserActivity extends AppCompatActivity {
         tvStatusMsg = findViewById(R.id.tvStatusMsg);
     }
 
-    /**
-     * פונקציה ליצירת משתמש חדש
-     */
+
     public void createUser(View view) {
         String name = eTName.getText().toString().trim();
         String email = eTEmail.getText().toString().trim();
         String pass = eTPass.getText().toString().trim();
         String confirmPass = eTConfirmPass.getText().toString().trim();
 
-        // בדיקות תקינות קלט
+        // 1. בדיקה שכל השדות מלאים
         if (name.isEmpty() || email.isEmpty() || pass.isEmpty() || confirmPass.isEmpty()) {
             setStatusError("Please fill all fields");
             return;
         }
 
+        // 2. בדיקה שהסיסמאות תואמות
         if (!pass.equals(confirmPass)) {
             setStatusError("Passwords do not match!");
             return;
         }
 
+        // 3. בדיקה שהסיסמה מספיק ארוכה (דרישת מינימום של Firebase היא 6 תווים)
         if (pass.length() < 6) {
             setStatusError("Password must be at least 6 characters");
             return;
         }
 
+        // הצגת חלונית המתנה בזמן התקשורת עם השרת
         ProgressDialog pd = new ProgressDialog(this);
         pd.setTitle("Connecting");
         pd.setMessage("Creating user and profile...");
-        pd.setCancelable(false);
+        pd.setCancelable(false); // המשתמש לא יכול לסגור את החלונית בלחיצה בחוץ
         pd.show();
 
-        // שלב 1: יצירת משתמש ב-Firebase Authentication
+
         refAuth.createUserWithEmailAndPassword(email, pass)
                 .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
                         if (task.isSuccessful()) {
+                            // המשתמש נוצר בהצלחה
                             FirebaseUser fbUser = refAuth.getCurrentUser();
                             if (fbUser != null) {
-                                String uid = fbUser.getUid();
+                                String uid = fbUser.getUid(); // ה-ID הייחודי שגוגל הצמידה למשתמש
 
-                                // שלב 2: עדכון ה-DisplayName ב-Firebase Auth (חשוב ל-RecordingService)
+
                                 UserProfileChangeRequest profileUpdates = new UserProfileChangeRequest.Builder()
                                         .setDisplayName(name)
                                         .build();
 
                                 fbUser.updateProfile(profileUpdates).addOnCompleteListener(profileTask -> {
-                                    // שלב 3: יצירת אובייקט משתמש ושמירה ב-Realtime Database
+
                                     saveUserToDatabase(uid, email, name, pd);
                                 });
                             }
                         } else {
+                            // אם הרישום נכשל (למשל המשתמש כבר קיים)
                             pd.dismiss();
                             handleError(task.getException());
                         }
@@ -102,21 +106,21 @@ public class RegiserActivity extends AppCompatActivity {
                 });
     }
 
-    /**
-     * שמירת נתוני המשתמש ב-Database
-     */
+
     private void saveUserToDatabase(String uid, String email, String name, ProgressDialog pd) {
+        // יצירת מופע חדש של מחלקת User (שמכילה UID, אימייל ושם)
         User newUser = new User(uid, email, name);
 
+        // שמירה בנתיב users/UID
         refUsers.child(uid).setValue(newUser)
                 .addOnCompleteListener(new OnCompleteListener<Void>() {
                     @Override
                     public void onComplete(@NonNull Task<Void> dbTask) {
-                        pd.dismiss();
+                        pd.dismiss(); // סגירת חלונית ההמתנה
                         if (dbTask.isSuccessful()) {
                             Toast.makeText(RegiserActivity.this, "Welcome " + name + "!", Toast.LENGTH_SHORT).show();
 
-                            // מעבר לדאשבורד וסגירת מסך הרישום
+                            // מעבר למסך הראשי וניקוי המחסנית (כדי שלא יהיה ניתן לחזור אחורה למסך הרישום)
                             Intent intent = new Intent(RegiserActivity.this, DashboardActivity.class);
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                             startActivity(intent);
@@ -128,10 +132,12 @@ public class RegiserActivity extends AppCompatActivity {
                 });
     }
 
+
     private void setStatusError(String msg) {
         tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
         tvStatusMsg.setText(msg);
     }
+
 
     public void goToLogin(View view) {
         Intent intent = new Intent(this, LoginActivity.class);
@@ -139,9 +145,7 @@ public class RegiserActivity extends AppCompatActivity {
         finish();
     }
 
-    /**
-     * טיפול בשגיאות נפוצות של Firebase Auth
-     */
+
     private void handleError(Exception exp) {
         tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
         if (exp instanceof FirebaseAuthWeakPasswordException) {

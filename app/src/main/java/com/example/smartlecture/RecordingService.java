@@ -27,8 +27,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 
+
 public class RecordingService extends Service {
-    private MediaRecorder recorder;
+    private MediaRecorder recorder; // רכיב המערכת לביצוע הקלטת קול
     private String eventId, userId, filePath, teacherName, lessonTitle, locationName;
     private boolean isPublic;
     private long recordingStartTime;
@@ -38,38 +39,42 @@ public class RecordingService extends Service {
         if (intent == null) return START_NOT_STICKY;
         String action = intent.getAction();
 
+        // זיהוי הפעולה הנדרשת מתוך ה-Intent
         if ("START_RECORDING".equals(action)) {
-            setupParameters(intent);
+            setupParameters(intent); // חילוץ נתוני ההרצאה
+            // הפעלת שירות קדמי (Foreground) עם התראה כדי שהמערכת לא תסגור אותו ברקע
             startForeground(1, getNotification("Recording lesson in progress..."));
             startRecording();
         } else if ("STOP_RECORDING".equals(action)) {
             stopRecording();
         }
-        // --- הוסף את החלק הזה ---
         else if ("UPDATE_EVENTS_FROM_SUMMARY".equals(action)) {
+            // פעולה ייעודית לעיבוד חוזר של סיכום לצורך שליפת אירועים חכמים
             String newSummary = intent.getStringExtra("NEW_SUMMARY");
-            userId = intent.getStringExtra("USER_ID"); // נדרש לשמירת התזכורות
+            userId = intent.getStringExtra("USER_ID");
             if (newSummary != null) {
                 processSmartEvents(newSummary);
             }
         }
-        return START_STICKY;
+        return START_STICKY; // מבטיח שהשירות ינסה לאתחל את עצמו אם הוא נסגר בגלל מחסור בזיכרון
     }
 
     private void setupParameters(Intent intent) {
+        // משיכת כל המידע שנשלח מה-Activity (הקלטה, משתמש, מיקום וכו')
         eventId = intent.getStringExtra("EVENT_ID");
         userId = intent.getStringExtra("USER_ID");
         isPublic = intent.getBooleanExtra("IS_PUBLIC", false);
         teacherName = intent.getStringExtra("TEACHER");
         lessonTitle = intent.getStringExtra("LESSON_TITLE");
         locationName = intent.getStringExtra("LOCATION");
-        // מקבלים את זמן תחילת ההקלטה המדויק מה-Activity לצורך סנכרון
         recordingStartTime = intent.getLongExtra("START_TIME", System.currentTimeMillis());
+        // קביעת נתיב זמני לשמירת קובץ ה-mp4 במכשיר
         filePath = getExternalCacheDir().getAbsolutePath() + "/" + eventId + ".mp4";
     }
 
     private void startRecording() {
         try {
+            // הגדרת רכיב ההקלטה: מקור (מיקרופון), פורמט (MPEG_4) וקידוד (AAC)
             recorder = new MediaRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
@@ -85,20 +90,22 @@ public class RecordingService extends Service {
     private void stopRecording() {
         if (recorder != null) {
             try {
-                recorder.stop();
+                recorder.stop(); // הפסקת פעולת המיקרופון
             } catch (RuntimeException e) {
                 Log.e("SmartLecture", "Stop failed");
             }
             recorder.release();
             recorder = null;
 
+            // עדכון ההתראה שההקלטה הסתיימה וכעת מתבצע עיבוד
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             nm.notify(1, getNotification("Processing and analyzing lesson..."));
-            uploadFileToStorage();
+            uploadFileToStorage(); // מעבר לשלב הבא: העלאה לענן
         }
     }
 
     private void uploadFileToStorage() {
+        // העלאת קובץ ההקלטה ל-Firebase Storage תחת תיקיית recordings
         File file = new File(filePath);
         StorageReference stRef = FirebaseStorage.getInstance().getReference()
                 .child("recordings").child(userId).child(eventId + ".mp4");
@@ -111,6 +118,7 @@ public class RecordingService extends Service {
 
     private void analyzeWithGemini(File file, String audioUrl) {
         try {
+            // המרת קובץ ההקלטה למערך בייטים (Bytes) עבור ה-AI
             byte[] bytes = Files.readAllBytes(file.toPath());
             String todayDate = new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new java.util.Date());
             String defaultDate = getOneWeekFromNow();
@@ -128,9 +136,11 @@ public class RecordingService extends Service {
                     "- Example: [Math Exam | 15/05/2026 | 10:00 | Hall A]\n\n" +
                     "Task 3: Finally, add a section called 'Relevant Links:' and provide 3 educational links related to the lesson's topic.";
 
+            // שליחת הקובץ והפקודה ל-API של Gemini
             GeminiManager.getInstance().sendTextWithFilePrompt(prompt, bytes, "audio/mp4", new GeminiCallback() {
                 @Override
                 public void onSuccess(String result) {
+                    // הפרדת התוצאה לסיכום ולקישורים
                     String summary = result, links = "";
                     if (result.contains("Relevant Links")) {
                         String[] parts = result.split("Relevant Links:?");
@@ -148,6 +158,8 @@ public class RecordingService extends Service {
 
     private void saveDataToFirebase(String summary, String links, String url) {
         DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference();
+
+
         if (isPublic) {
             dbRef.child("Lectures/pub_true").addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
@@ -160,12 +172,13 @@ public class RecordingService extends Service {
                             String exLoc = lectureNode.child("location").getValue(String.class);
                             Long exStart = lectureNode.child("recordingStartTime").getValue(Long.class);
 
+                            // בדיקה אם ההרצאה קיימת (סטייה של עד 5 דקות ומיקום זהה)
                             if (exStart != null && locationName != null && locationName.equals(exLoc) &&
                                     Math.abs(recordingStartTime - exStart) < 300000) {
 
                                 String exSum = lectureNode.child("summaryText").getValue(String.class);
                                 if (exSum != null && exSum.length() > bestSummary.length()) {
-                                    bestSummary = exSum;
+                                    bestSummary = exSum; // לוקחים את הסיכום האיכותי יותר
                                     bestLinks = lectureNode.child("relevantLinks").getValue(String.class);
                                 }
                             }
@@ -185,9 +198,11 @@ public class RecordingService extends Service {
         if (userName == null || userName.isEmpty()) userName = "Student";
 
         DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference();
+        // קביעת נתיב השמירה ב-Database לפי סוג ההרצאה (ציבורי/פרטי)
         String dbPath = isPublic ? "Lectures/pub_true/" + userName + "/" + eventId
                 : "Lectures/pub_false/" + userId + "/" + userName + "/" + eventId;
 
+        // שימוש ב-Transaction כדי להבטיח שהנתונים נכתבים בצורה בטוחה
         dbRef.child(dbPath).runTransaction(new Transaction.Handler() {
             @Override
             public Transaction.Result doTransaction(MutableData mutableData) {
@@ -210,28 +225,30 @@ public class RecordingService extends Service {
             @Override
             public void onComplete(DatabaseError error, boolean committed, DataSnapshot snapshot) {
                 if (committed) {
-                    // 1. קודם כל מעבדים את האירועים החכמים (מה שכבר יש לך)
+                    // 1. עיבוד "אירועים חכמים" מתוך הסיכום (הפיכת טקסט לתזכורות ביומן)
                     processSmartEvents(summaryToSave);
 
-                    // 2. עדכון המונה בנתיב המדויק לפי המבנה שלך
+                    // 2. עדכון מונה ההרצאות הכולל של המשתמש (לצורך הסטטיסטיקה ב-Dashboard)
                     DatabaseReference userRef = FirebaseDatabase.getInstance()
-                            .getReference("users") // שימי לב שזה users באותיות קטנות לפי המבנה שלך
+                            .getReference("users")
                             .child(userId);
 
                     userRef.child("totalLectures").setValue(ServerValue.increment(1));
 
-                    // 3. שליחת ה-Broadcast וסיום ה-Service
+                    // 3. שליחת שידור (Broadcast) ל-Activity כדי לעדכן שהכל הסתיים
                     sendBroadcast(new Intent("RECORDING_FINISHED")
                             .putExtra("EVENT_ID", eventId)
                             .putExtra("summaryText", summaryToSave)
                             .putExtra("relevantLinks", linksToSave));
 
+                    // הצגת התראה סופית שהסיכום מוכן
                     NotificationHelper.showSummaryReadyNotification(getApplicationContext(), teacherName);
-                    stopSelf();
+                    stopSelf(); // סגירת השירות
                 }
             }
         });
     }
+
 
     private void processSmartEvents(String fullText) {
         if (!fullText.contains("SMART_EVENTS_LIST:")) return;
@@ -240,7 +257,7 @@ public class RecordingService extends Service {
             String[] lines = listPart.split("\n");
             for (String line : lines) {
                 if (line.contains("|") && line.contains("[") && line.contains("]")) {
-                    parseAndSaveSingleEvent(line);
+                    parseAndSaveSingleEvent(line); // ניתוח כל שורה בנפרד
                 }
             }
         } catch (Exception e) { Log.e("SmartLecture", "Error processing events", e); }
@@ -248,6 +265,7 @@ public class RecordingService extends Service {
 
     private void parseAndSaveSingleEvent(String eventLine) {
         try {
+            // ניקוי הסוגריים והפרדה לפי הסימן "|"
             String cleanLine = eventLine.replace("[", "").replace("]", "");
             String[] details = cleanLine.split("\\|");
             if (details.length >= 3) {
@@ -256,9 +274,11 @@ public class RecordingService extends Service {
                 String timeStr = details[2].trim();
                 String loc = (details.length >= 4) ? details[3].trim() : "No updated location";
 
+                // המרת הטקסט של התאריך והשעה לאובייקט מסוג Date
                 java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault());
                 java.util.Date parsedDate = sdf.parse(dateStr + " " + timeStr);
 
+                // שמירה רק אם מדובר באירוע עתידי
                 if (parsedDate != null && parsedDate.after(new java.util.Date())) {
                     saveSingleReminderToFirebase(title, parsedDate.getTime(), loc);
                 }
@@ -267,6 +287,7 @@ public class RecordingService extends Service {
     }
 
     private void saveSingleReminderToFirebase(String title, long timestamp, String loc) {
+        // יצירת ID ייחודי לכל תזכורת
         String uniqueId = "task_" + Math.abs((title + timestamp).hashCode());
         DatabaseReference remRef = FirebaseDatabase.getInstance().getReference("reminders").child(userId).child(uniqueId);
 
@@ -277,13 +298,14 @@ public class RecordingService extends Service {
         rData.put("location", loc);
 
         remRef.setValue(rData).addOnSuccessListener(aVoid -> {
-            // 1. התראה לנייד
+            // שליחת התזכורת ל-ReminderManager כדי לקבוע התראה פיזית בטלפון (AlarmManager)
             Task task = new Task(uniqueId, title, timestamp, userId, loc);
             new ReminderManager(getApplicationContext(), new ArrayList<>()).addTask(task);
         });
     }
 
     private Notification getNotification(String text) {
+        // בניית התראה לשירות (חובה עבור Foreground Service)
         String cid = "record_chan";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -297,6 +319,7 @@ public class RecordingService extends Service {
     }
 
     private String getOneWeekFromNow() {
+        // פונקציית עזר למקרה ש-Gemini לא זיהה תאריך - קובעת שבוע מהיום כברירת מחדל
         java.util.Calendar cal = java.util.Calendar.getInstance();
         cal.add(java.util.Calendar.DAY_OF_YEAR, 7);
         return new java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(cal.getTime());

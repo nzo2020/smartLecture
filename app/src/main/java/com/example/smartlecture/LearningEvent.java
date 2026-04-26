@@ -18,7 +18,7 @@ public abstract class LearningEvent {
         this.userID = userID;
         this.location = location;
     }
-
+    //זה אומר שהמחלקה הנוכחית רק מבטיחה שכל "משימה" או "אירוע" (או מה שהמחלקה שלך מייצגת) חייב שיהיה לו תאריך יעד, אבל כל סוג של משימה יחשב את התאריך הזה בצורה שונה.
     public abstract long getDueDate();
 
     // Getters & Setters

@@ -29,22 +29,27 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.*;
 
+
 public class RecordLesson extends AppCompatActivity {
 
+    // רכיבי ממשק משתמש
     private TextInputEditText etTeacherName, etLessonTitle;
     private TextView tvRecordingTime, tvLessonSummary, tvLocation;
     private MaterialButton btnStart, btnStop, btnAddSummary, btnBackHome;
     private SwitchMaterial swPublicAccess;
 
+    // ניהול זמן ומיקום
     private long startTime = 0;
-    private Handler timerHandler = new Handler();
-    private FusedLocationProviderClient fusedLocationClient;
+    private Handler timerHandler = new Handler(); // אחראי על עדכון שעון העצר במסך
+    private FusedLocationProviderClient fusedLocationClient; // ספריית גוגל לקבלת מיקום מדויק
     private String finalLocationName = "Unknown Location";
 
+    // ניהול סנכרון סיכומים מ-Firebase
     private ValueEventListener sharedSummaryListener;
     private DatabaseReference currentLectureRef;
     private String lastProcessedSummary = "";
-    // Google Places Autocomplete Launcher
+
+
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -60,7 +65,7 @@ public class RecordLesson extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_record_lesson);
 
-        // Initialize Google Places using your API Key
+        // אתחול שירות Google Places באמצעות מפתח ה-API
         if (!Places.isInitialized()) {
             Places.initialize(getApplicationContext(), BuildConfig.PLACES_API_KEY);
         }
@@ -68,14 +73,15 @@ public class RecordLesson extends AppCompatActivity {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         initViews();
         setupListeners();
-        checkLocationPermission();
+        checkLocationPermission(); // בדיקת הרשאות מיקום כבר בעליית המסך
 
-        // Register receiver for when recording and AI analysis are finished
+
         registerReceiver(statusReceiver, new IntentFilter("RECORDING_FINISHED"),
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? Context.RECEIVER_EXPORTED : 0);
     }
 
     private void initViews() {
+        // קישור רכיבים מה-XML למשתנים ב-Java
         etLessonTitle = findViewById(R.id.etLessonTitle);
         etTeacherName = findViewById(R.id.etTeacherName);
         tvRecordingTime = findViewById(R.id.tvRecordingTime);
@@ -86,11 +92,11 @@ public class RecordLesson extends AppCompatActivity {
         btnAddSummary = findViewById(R.id.btnAddSummary);
         btnBackHome = findViewById(R.id.btnBackHome);
         swPublicAccess = findViewById(R.id.swPublicAccess);
-        btnStop.setEnabled(false);
+        btnStop.setEnabled(false); // כפתור העצירה כבוי עד שתתחיל הקלטה
     }
 
     private void setupListeners() {
-        // Clicking location text opens Google Places search
+        // לחיצה על טקסט המיקום מאפשרת חיפוש מקום ידני בגוגל
         tvLocation.setOnClickListener(v -> {
             List<Place.Field> fields = Arrays.asList(Place.Field.NAME, Place.Field.ADDRESS);
             Intent intent = new Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
@@ -98,6 +104,7 @@ public class RecordLesson extends AppCompatActivity {
             autocompleteLauncher.launch(intent);
         });
 
+        // כפתור התחלת הקלטה - בודק הרשאות (מיקרופון/מיקום) לפני הפעלה
         btnStart.setOnClickListener(v -> {
             if (checkPermissions()) startRecordingProcess();
         });
@@ -107,6 +114,10 @@ public class RecordLesson extends AppCompatActivity {
         btnAddSummary.setOnClickListener(v -> resetUI());
     }
 
+    /**
+     * הפעלת שירות ההקלטה (RecordingService) כ-Foreground Service.
+     * מעבירים ל-Service את כל נתוני ההרצאה כדי שיוכל לטפל בהם גם אם המסך נסגר.
+     */
     private void startRecordingProcess() {
         String eventId = "event_" + System.currentTimeMillis();
         String uid = FirebaseAuth.getInstance().getCurrentUser().getUid();
@@ -119,22 +130,23 @@ public class RecordLesson extends AppCompatActivity {
         intent.putExtra("TEACHER", etTeacherName.getText().toString());
         intent.putExtra("LESSON_TITLE", etLessonTitle.getText().toString());
         intent.putExtra("LOCATION", finalLocationName);
-        intent.putExtra("START_TIME", System.currentTimeMillis()); // <--- הוסף את זה
+        intent.putExtra("START_TIME", System.currentTimeMillis());
 
+        // הפעלה כ-Foreground Service (מחויב באנדרואיד חדש עבור הקלטה ברקע)
         ContextCompat.startForegroundService(this, intent);
 
         btnStart.setEnabled(false);
         btnStop.setEnabled(true);
         startTime = System.currentTimeMillis();
-        timerHandler.postDelayed(timerRunnable, 0);
+        timerHandler.postDelayed(timerRunnable, 0); // הפעלת שעון העצר במסך
     }
 
     private void stopRecordingProcess() {
         Intent intent = new Intent(this, RecordingService.class);
         intent.setAction("STOP_RECORDING");
-        startService(intent);
+        startService(intent); // שליחת פקודת עצירה ל-Service
         btnStop.setEnabled(false);
-        timerHandler.removeCallbacks(timerRunnable);
+        timerHandler.removeCallbacks(timerRunnable); // עצירת עדכון שעון העצר
     }
 
     private final Runnable timerRunnable = new Runnable() {
@@ -154,12 +166,14 @@ public class RecordLesson extends AppCompatActivity {
         }
     }
 
+
     private void getCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
             if (location != null) {
                 Geocoder geocoder = new Geocoder(this, Locale.getDefault());
                 try {
+                    // הפיכת קואורדינטות (Lat/Lng) לכתובת (רחוב, עיר)
                     List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
                     if (addresses != null && !addresses.isEmpty()) {
                         finalLocationName = addresses.get(0).getAddressLine(0);
@@ -170,6 +184,7 @@ public class RecordLesson extends AppCompatActivity {
         });
     }
 
+
     private boolean checkPermissions() {
         List<String> permissionsNeeded = new ArrayList<>();
 
@@ -177,8 +192,6 @@ public class RecordLesson extends AppCompatActivity {
             permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
         }
 
-
-        // הוספת הרשאת התראות לאנדרואיד 13 ומעלה
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
@@ -192,6 +205,11 @@ public class RecordLesson extends AppCompatActivity {
         return true;
     }
 
+    /**
+     * קבלת תוצאות מה-Service:
+     * ברגע שה-AI מסיים לעבוד, ה-Service שולח Broadcast. ה-Activity מקבל אותו,
+     * מציג את הסיכום על המסך והופך קישורים ללחיצים (Linkify).
+     */
     private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -204,6 +222,7 @@ public class RecordLesson extends AppCompatActivity {
                 Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
                 btnStart.setEnabled(true);
 
+                // אם ההרצאה ציבורית, מתחילים להאזין לעדכונים מסטודנטים אחרים
                 if (swPublicAccess.isChecked() && eventId != null) {
                     startListeningForSharedUpdates(eventId);
                 }
@@ -220,8 +239,12 @@ public class RecordLesson extends AppCompatActivity {
         btnStop.setEnabled(false);
     }
 
+    /**
+     * מנגנון הסנכרון החברתי (Collaborative Summary Sync):
+     * מאזין לכל ההרצאות הציבוריות ב-Firebase. אם משתמש אחר הקליט את אותה הרצאה
+     * (לפי זמן ומיקום) והפיק סיכום ארוך/טוב יותר, המסך יתעדכן אוטומטית בסיכום המשופר.
+     */
     private void startListeningForSharedUpdates(String eventId) {
-        // מאזינים לכל ההרצאות הציבוריות של כל המשתמשים
         DatabaseReference allPublicRef = FirebaseDatabase.getInstance().getReference().child("Lectures/pub_true");
 
         sharedSummaryListener = new ValueEventListener() {
@@ -235,17 +258,17 @@ public class RecordLesson extends AppCompatActivity {
 
                 for (DataSnapshot userNode : snapshot.getChildren()) {
                     for (DataSnapshot lectureNode : userNode.getChildren()) {
-                        // בודקים אם זו הרצאה "תאומה" (אותו מיקום וזמן קרוב)
                         String exLoc = lectureNode.child("location").getValue(String.class);
                         Long exStart = lectureNode.child("recordingStartTime").getValue(Long.class);
 
+                        // בדיקה אם ההרצאה היא "תאומה" (אותו מקום, זמן קרוב)
                         if (exStart != null && finalLocationName.equals(exLoc) &&
-                                Math.abs(startTime - exStart) < 300000) { // סטייה של עד 5 דקות
+                                Math.abs(startTime - exStart) < 300000) {
 
                             String remoteSummary = lectureNode.child("summaryText").getValue(String.class);
                             String remoteLinks = lectureNode.child("relevantLinks").getValue(String.class);
 
-                            // אם מצאנו סיכום ארוך יותר ממה שמוצג כרגע על המסך
+                            // השוואת איכות (לפי אורך הסיכום)
                             if (remoteSummary != null && remoteSummary.length() > bestSummaryFound.length()) {
                                 bestSummaryFound = remoteSummary;
                                 bestLinksFound = remoteLinks;
@@ -255,12 +278,12 @@ public class RecordLesson extends AppCompatActivity {
                     }
                 }
 
+                // אם נמצא סיכום טוב יותר, מעדכנים את ה-UI וגם את האירועים החכמים ביומן
                 if (foundBetter && !bestSummaryFound.equals(lastProcessedSummary)) {
-                    // עדכון המסך בסיכום הטוב יותר
                     tvLessonSummary.setText(bestSummaryFound + "\n\n🔗 Links:\n" + bestLinksFound);
                     Linkify.addLinks(tvLessonSummary, Linkify.WEB_URLS);
 
-                    // עדכון האירועים ביומן לפי הסיכום החדש
+                    // עדכון משימות יומן לפי הסיכום החדש דרך ה-Service
                     Intent intent = new Intent(RecordLesson.this, RecordingService.class);
                     intent.setAction("UPDATE_EVENTS_FROM_SUMMARY");
                     intent.putExtra("NEW_SUMMARY", bestSummaryFound);
@@ -275,12 +298,13 @@ public class RecordLesson extends AppCompatActivity {
             @Override public void onCancelled(DatabaseError error) {}
         };
 
-        // חשוב: להשתמש ב-allPublicRef ולא ב-currentLectureRef
         allPublicRef.addValueEventListener(sharedSummaryListener);
     }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // ניקוי משאבים: הסרת ה-Receiver והמאזין ל-Firebase כדי למנוע דליפות זיכרון
         try { unregisterReceiver(statusReceiver); } catch (Exception e) {}
 
         if (sharedSummaryListener != null) {

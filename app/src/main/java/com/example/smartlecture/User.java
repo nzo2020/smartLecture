@@ -14,12 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class User {
-    private String userID;
-    private String email;
-    private String name;
-    private int totalLectures;
+    private String userID;      // מזהה ייחודי מ-Firebase Auth
+    private String email;       // כתובת המייל של המשתמש
+    private String name;        // השם המלא של המשתמש
+    private int totalLectures;  // מונה כמות הרצאות (אופציונלי)
 
-    // רשימה פנימית השומרת את האירועים שנמשכו
+    // רשימה פנימית השומרת את האירועים שנמשכו מהענן לצורך גישה מהירה
     private List<Lecture> learningEvents = new ArrayList<>();
 
     public interface OnEventsFetchListener {
@@ -27,9 +27,10 @@ public class User {
         void onError(String error);
     }
 
-    // Constructor ריק נדרש עבור Firebase
+    // Constructor ריק נדרש עבור Firebase לצורך המרת הנתונים לאובייקט (Deserialization)
     public User() {}
 
+    // בנאי ליצירת משתמש חדש
     public User(String userID, String email, String name) {
         this.userID = userID;
         this.email = email;
@@ -38,11 +39,13 @@ public class User {
     }
 
     /**
-     * פונקציה למשיכת כל ההרצאות (ציבוריות ופרטיות)
-     * מותאמת למבנה הנתונים החדש ב-Service
+     * פונקציה מורכבת למשיכת כל ההרצאות.
+     * הלוגיקה כאן מחברת בין שני מקומות שונים ב-Database:
+     * 1. Lectures/pub_true (הרצאות שכולם יכולים לראות)
+     * 2. Lectures/pub_false (הרצאות אישיות של המשתמש)
      */
     public void fetchEvents(final OnEventsFetchListener listener) {
-        // קבלת ה-UID הנוכחי
+        // וידוא שיש לנו UID עבודה - או מהאובייקט או ישירות מה-Auth
         String currentUid = (this.userID != null && !this.userID.isEmpty()) ? this.userID :
                 (FirebaseAuth.getInstance().getCurrentUser() != null ?
                         FirebaseAuth.getInstance().getCurrentUser().getUid() : null);
@@ -52,7 +55,7 @@ public class User {
             return;
         }
 
-        // שליפת ה-DisplayName מה-Auth (זה השם שה-Service משתמש בו כתיקייה)
+        // שליפת ה-DisplayName. השירות (Service) שומר הרצאות תחת שם המשתמש בתיקייה הסופית.
         String authDisplayName = "Student";
         if (FirebaseAuth.getInstance().getCurrentUser() != null) {
             String dn = FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
@@ -64,25 +67,25 @@ public class User {
         FirebaseDatabase db = FirebaseDatabase.getInstance();
         List<Lecture> myOnlyList = new ArrayList<>();
 
-        // נתיב 1: הרצאות ציבוריות -> שם המשתמש
+        // הגדרת הנתיבים ב-Database לפי המבנה שקבעת ב-Service
+        // נתיב 1: ציבורי -> תחת שם המשתמש
         DatabaseReference pubRef = db.getReference("Lectures/pub_true").child(authDisplayName);
 
-        // נתיב 2: הרצאות פרטיות -> UID -> שם המשתמש
         DatabaseReference privRef = db.getReference("Lectures/pub_false").child(currentUid).child(authDisplayName);
 
-        // שלב א': משיכת הרצאות ציבוריות
+
         pubRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot pubSnapshot) {
                 addLecturesFromSnapshot(pubSnapshot, myOnlyList);
 
-                // שלב ב': משיכת הרצאות פרטיות
+
                 privRef.addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot privSnapshot) {
                         addLecturesFromSnapshot(privSnapshot, myOnlyList);
 
-                        // עדכון הרשימה המקומית והחזרת התוצאה ל-UI
+                        // סיום התהליך: עדכון הרשימה המקומית וקריאה ל-Listener לעדכון המסך
                         learningEvents = myOnlyList;
                         listener.onEventsFetched(myOnlyList);
                     }
@@ -101,20 +104,19 @@ public class User {
         });
     }
 
-    /**
-     * פונקציית עזר לעיבוד ה-Snapshot ומניעת כפילויות
-     */
+
     private void addLecturesFromSnapshot(DataSnapshot snapshot, List<Lecture> listToFill) {
         if (!snapshot.exists()) return;
 
         for (DataSnapshot eventSnapshot : snapshot.getChildren()) {
             try {
+                // המרת ה-JSON מהענן לאובייקט Java מסוג Lecture
                 Lecture lecture = eventSnapshot.getValue(Lecture.class);
                 if (lecture != null) {
-                    // הגדרת ה-ID מתוך המפתח של Firebase
+                    // שמירת המפתח (Key) של Firebase בתור ה-ID של ההרצאה
                     lecture.setEventID(eventSnapshot.getKey());
 
-                    // בדיקה אם ההרצאה כבר קיימת ברשימה (לפי ID)
+                    // מנגנון מניעת כפילויות: בודק אם הרצאה עם אותו ID כבר קיימת ברשימה
                     boolean alreadyExists = false;
                     for (Lecture l : listToFill) {
                         if (l.getEventID() != null && l.getEventID().equals(lecture.getEventID())) {
@@ -134,6 +136,7 @@ public class User {
     }
 
     // --- Getters & Setters ---
+    // מאפשרים גישה מבוקרת למשתני המחלקה (Encapsulation)
 
     public String getUserID() { return userID; }
     public void setUserID(String userID) { this.userID = userID; }

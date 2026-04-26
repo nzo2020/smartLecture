@@ -24,27 +24,31 @@ import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
 import java.util.List;
 
+
 public class SearchSummariesActivity extends AppCompatActivity {
 
+    // רכיבי ממשק המשתמש
     private Spinner spinnerLecturer, spinnerTitle;
     private EditText etFreeSearch;
     private ListView lvSearchResults;
 
-    private List<Lecture> allLectures;
-    private List<Lecture> currentFilteredList;
-    private List<String> lecturersNames, lectureTitles;
+    // מבני נתונים לניהול הרשימות
+    private List<Lecture> allLectures;           // כל ההרצאות שנטענו מה-Firebase
+    private List<Lecture> currentFilteredList;   // ההרצאות שמוצגות כרגע לאחר סינון
+    private List<String> lecturersNames, lectureTitles; // נתונים עבור התיבות הנפתחות (Spinners)
 
+    // אדפטרים לקישור הנתונים לרכיבי התצוגה
     private ArrayAdapter<String> lecturerAdapter, titleAdapter, listAdapter;
-    private SearchManager searchManager;
+    private SearchManager searchManager; // המערכת המרכזית לביצוע חיפוש פולימורפי
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_search_summaries);
 
-        initViews();
-        setupUserAndLoadLectures();
-        setupListeners();
+        initViews();                  // אתחול רכיבי ה-UI
+        setupUserAndLoadLectures();   // טעינת הנתונים מהענן
+        setupListeners();             // הגדרת מאזינים לשינויים בחיפוש
     }
 
     private void initViews() {
@@ -56,30 +60,31 @@ public class SearchSummariesActivity extends AppCompatActivity {
         allLectures = new ArrayList<>();
         currentFilteredList = new ArrayList<>();
 
-        // Initialize Spinner for Lecturers
+        // הגדרת ה-Spinner למרצים עם ערך ברירת מחדל "כל המרצים"
         lecturersNames = new ArrayList<>();
         lecturersNames.add("All Lecturers");
         lecturerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lecturersNames);
         lecturerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerLecturer.setAdapter(lecturerAdapter);
 
-        // Initialize Spinner for Titles
+        // הגדרת ה-Spinner לכותרות עם ערך ברירת מחדל "כל הכותרות"
         lectureTitles = new ArrayList<>();
         lectureTitles.add("All Titles");
         titleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, lectureTitles);
         titleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinnerTitle.setAdapter(titleAdapter);
 
-        // Initialize Results ListView
+        // אתחול ה-ListView שבו יוצגו תוצאות החיפוש
         listAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
         lvSearchResults.setAdapter(listAdapter);
     }
+
 
     private void setupListeners() {
         AdapterView.OnItemSelectedListener filterListener = new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                performFiltering();
+                performFiltering(); // הפעלת סינון בעת בחירה ב-Spinner
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -88,12 +93,13 @@ public class SearchSummariesActivity extends AppCompatActivity {
         spinnerLecturer.setOnItemSelectedListener(filterListener);
         spinnerTitle.setOnItemSelectedListener(filterListener);
 
+        // מאזין לשינויים בזמן אמת בתיבת החיפוש החופשי
         etFreeSearch.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                performFiltering();
+                performFiltering(); // סינון מחדש בכל הקלדה של תו
             }
             @Override
             public void afterTextChanged(Editable s) {}
@@ -110,21 +116,21 @@ public class SearchSummariesActivity extends AppCompatActivity {
                 public void onDataChange(@NonNull DataSnapshot snapshot) {
                     User user = snapshot.getValue(User.class);
                     if (user != null) {
-                        // Crucial: Set the UID so fetchEvents knows the path
-                        user.setUserID(uid);
+                        user.setUserID(uid); // הגדרת מזהה המשתמש לצורך השאילתה
 
+                        // הפעלת פונקציית הטעינה במחלקת User
                         user.fetchEvents(new User.OnEventsFetchListener() {
                             @Override
                             public void onEventsFetched(List<Lecture> events) {
                                 allLectures.clear();
                                 allLectures.addAll(events);
 
-                                // Initialize search manager with the generic ISearchable list
+                                // פולימורפיזם: המרת רשימת ה-Lecture לרשימת ISearchable עבור ה-SearchManager
                                 List<ISearchable> searchables = new ArrayList<>(allLectures);
                                 searchManager = new SearchManager(searchables);
 
-                                updateSpinnersData();
-                                performFiltering();
+                                updateSpinnersData(); // עדכון רשימת המרצים והכותרות בתיבות הבחירה
+                                performFiltering();   // ביצוע סינון ראשוני להצגת הכל
                             }
 
                             @Override
@@ -166,16 +172,17 @@ public class SearchSummariesActivity extends AppCompatActivity {
         String selLecturer = spinnerLecturer.getSelectedItem().toString();
         String selTitle = spinnerTitle.getSelectedItem().toString();
 
-        // Step 1: Filter by text query using SearchManager
+        // שלב 1: סינון לפי מחרוזת החיפוש (חיפוש בכל השדות של ההרצאה)
         List<ISearchable> searchResults = searchManager.search(query);
 
         currentFilteredList.clear();
         List<String> displayStrings = new ArrayList<>();
 
-        // Step 2: Cross-reference with Spinner selections
+        // שלב 2: מעבר על תוצאות החיפוש ובדיקה אם הן עומדות בקריטריונים של ה-Spinners
         for (ISearchable item : searchResults) {
-            Lecture lecture = (Lecture) item;
+            Lecture lecture = (Lecture) item; // Casting חזרה לסוג Lecture
 
+            // בדיקה אם המרצה והכותרת תואמים לבחירה (או שביקשו "הכל")
             boolean matchesLecturer = selLecturer.equals("All Lecturers") ||
                     selLecturer.equals(lecture.getLecturer());
             boolean matchesTitle = selTitle.equals("All Titles") ||
@@ -183,10 +190,12 @@ public class SearchSummariesActivity extends AppCompatActivity {
 
             if (matchesLecturer && matchesTitle) {
                 currentFilteredList.add(lecture);
+                // יצירת מחרוזת מעוצבת לתצוגה ברשימה
                 displayStrings.add("📖 Title: " + lecture.getTitle() + "\n👨‍🏫 Lecturer: " + lecture.getLecturer());
             }
         }
 
+        // עדכון האדפטר והצגת התוצאות הסופיות למשתמש
         listAdapter.clear();
         listAdapter.addAll(displayStrings);
         listAdapter.notifyDataSetChanged();

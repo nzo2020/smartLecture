@@ -1,6 +1,6 @@
 package com.example.smartlecture;
 
-import static com.example.smartlecture.FBRef.refAuth;
+import static com.example.smartlecture.FBRef.refAuth; // שימוש בקישור ל-FirebaseAuth מהמחלקה המרכזית
 
 import android.app.ProgressDialog;
 import android.content.Intent;
@@ -23,27 +23,30 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException;
 
 public class LoginActivity extends AppCompatActivity {
 
+    // הצהרה על רכיבי ממשק המשתמש ומשתנים לאחסון מקומי
     private EditText eTEmail, eTPass;
     private TextView tVMsg;
-    private SharedPreferences sharedPref;
+    private SharedPreferences sharedPref; // רכיב לשמירת נתונים קטנים במכשיר (כמו מצב "זכור אותי")
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        // שימי לב: IDs תואמים בדיוק ל-XML ששלחת
+        // אתחול הרכיבים על ידי קישורם ל-ID ב-XML
         eTEmail = findViewById(R.id.etUsername);
         eTPass = findViewById(R.id.etPassword);
         tVMsg = findViewById(R.id.tvMsg);
 
+        // יצירת/פתיחת קובץ הגדרות מקומי בשם "USER_SETTINGS"
         sharedPref = getSharedPreferences("USER_SETTINGS", MODE_PRIVATE);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        // בדיקה אם המשתמש כבר מחובר
+        //בדיקה אוטומטית בעת עליית המסך: אם קיים משתמש מחובר ב-Firebase והמשתמש בחר בעבר "להישאר מחובר", נעבור ישירות ל-Dashboard בלי לבקש פרטים שוב.
+
         boolean isChecked = sharedPref.getBoolean("stayConnect", false);
         if (refAuth.getCurrentUser() != null && isChecked) {
             goToDashboard();
@@ -54,26 +57,31 @@ public class LoginActivity extends AppCompatActivity {
         String email = eTEmail.getText().toString().trim();
         String pass = eTPass.getText().toString().trim();
 
+        // בדיקה בסיסית שהשדות אינם ריקים
         if (email.isEmpty() || pass.isEmpty()) {
             tVMsg.setText("Please fill all fields");
             return;
         }
 
+        // יצירת חלונית המתנה (ProgressDialog) כדי שהמשתמש ידע שהפעולה מתבצעת
         ProgressDialog pd = new ProgressDialog(this);
         pd.setMessage("Logging in...");
-        pd.setCancelable(false);
+        pd.setCancelable(false); // מניעת סגירה של החלונית בלחיצה מחוץ לה
         pd.show();
 
+        // שליחת בקשת התחברות ל-Firebase Authentication
         refAuth.signInWithEmailAndPassword(email, pass)
                 .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
-                        pd.dismiss();
+                        pd.dismiss(); // סגירת חלונית ההמתנה בסיום הפעולה
+
                         if (task.isSuccessful()) {
-                            // שומרים שהמשתמש מחובר
+                            // אם ההתחברות הצליחה: נשמור במכשיר שהמשתמש ביקש להישאר מחובר
                             sharedPref.edit().putBoolean("stayConnect", true).apply();
                             goToDashboard();
                         } else {
+                            // אם נכשלה: נשלח את השגיאה לטיפול ייעודי
                             handleLoginErrors(task.getException());
                         }
                     }
@@ -82,12 +90,16 @@ public class LoginActivity extends AppCompatActivity {
 
     private void handleLoginErrors(Exception exp) {
         if (exp instanceof FirebaseAuthInvalidUserException) {
+            // מקרה שבו האימייל לא קיים במערכת
             tVMsg.setText("No account found with this email.");
         } else if (exp instanceof FirebaseAuthInvalidCredentialsException) {
+            // מקרה של סיסמה שגויה או אימייל לא תקין
             tVMsg.setText("Wrong password or email.");
         } else if (exp instanceof FirebaseNetworkException) {
+            // בעיית חיבור לאינטרנט
             tVMsg.setText("Check your internet connection.");
         } else {
+            // שגיאה כללית אחרת
             tVMsg.setText("Error: " + exp.getMessage());
         }
     }
@@ -95,7 +107,7 @@ public class LoginActivity extends AppCompatActivity {
     private void goToDashboard() {
         Intent intent = new Intent(this, DashboardActivity.class);
         startActivity(intent);
-        finish();
+        finish(); // השמדת ה-Activity הנוכחי כדי שלא יהיה ניתן לחזור אליו בלחיצה על Back
     }
 
     public void goToRegister(View view) {

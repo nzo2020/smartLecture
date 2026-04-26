@@ -118,43 +118,6 @@ public class GeminiManager {
     }
 
     /**
-     * Sends a text prompt along with several photos to the Gemini model and receives a text response.
-     *
-     * @param prompt    The text prompt to send to the model.
-     * @param photos    The files to send to the model.
-     * @param callback  The callback to receive the response or error.
-     */
-    public void sendTextWithPhotosPrompt(String prompt, ArrayList<Bitmap> photos, GeminiCallback callback) {
-        List<Part> parts = new ArrayList<>();
-        parts.add(new TextPart(prompt));
-        for (Bitmap photo : photos) {
-            parts.add(new ImagePart(photo));
-        }
-
-        Content[] content = new Content[1];
-        content[0] = new Content(parts);
-
-        gemini.generateContent(content,
-                new Continuation<GenerateContentResponse>() {
-                    @NonNull
-                    @Override
-                    public CoroutineContext getContext() {
-                        return EmptyCoroutineContext.INSTANCE;
-                    }
-
-                    @Override
-                    public void resumeWith(@NonNull Object result) {
-                        if (result instanceof Result.Failure) {
-                            Log.i(TAG, "Error: " + ((Result.Failure) result).exception.getMessage());
-                            callback.onFailure(((Result.Failure) result).exception);
-                        } else {
-                            callback.onSuccess(((GenerateContentResponse) result).getText());
-                        }
-                    }
-                });
-    }
-
-    /**
      * Sends a text prompt along with a file to the Gemini model and receives a text response.
      *
      * @param prompt    The text prompt to send to the model.
@@ -166,44 +129,6 @@ public class GeminiManager {
         List<Part> parts = new ArrayList<>();
         parts.add(new TextPart(prompt));
         parts.add(new BlobPart(mimeType, bytes));
-
-        Content[] content = new Content[1];
-        content[0] = new Content(parts);
-
-        gemini.generateContent(content,
-                new Continuation<GenerateContentResponse>() {
-                    @NonNull
-                    @Override
-                    public CoroutineContext getContext() {
-                        return EmptyCoroutineContext.INSTANCE;
-                    }
-
-                    @Override
-                    public void resumeWith(@NonNull Object result) {
-                        if (result instanceof Result.Failure) {
-                            Log.i(TAG, "Error: " + ((Result.Failure) result).exception.getMessage());
-                            callback.onFailure(((Result.Failure) result).exception);
-                        } else {
-                            callback.onSuccess(((GenerateContentResponse) result).getText());
-                        }
-                    }
-                });
-    }
-
-    /**
-     * Sends a text prompt along with several files to the Gemini model and receives a text response.
-     *
-     * @param prompt    The text prompt to send to the model.
-     * @param filesBytes The files to send to the model.
-     * @param mimeTypes  The MIME types of the files.
-     * @param callback   The callback to receive the response or error.
-     */
-    public void sendTextWithFilesPrompt(String prompt, ArrayList<byte[]> filesBytes, ArrayList<String> mimeTypes, GeminiCallback callback) {
-        List<Part> parts = new ArrayList<>();
-        parts.add(new TextPart(prompt));
-        for (int i = 0; i < filesBytes.size(); i++) {
-            parts.add(new BlobPart(mimeTypes.get(i), filesBytes.get(i)));
-        }
 
         Content[] content = new Content[1];
         content[0] = new Content(parts);

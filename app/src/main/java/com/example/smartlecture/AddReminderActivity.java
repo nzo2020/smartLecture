@@ -42,9 +42,10 @@ public class AddReminderActivity extends AppCompatActivity {
     private TextInputLayout tilLocation;
     private MaterialButton btnSaveReminder;
     private ImageButton btnBack;
-    private Calendar selectedDateTime;
-    private FusedLocationProviderClient fusedLocationClient;
+    private Calendar selectedDateTime; // שימוש ב-Calendar מאפשר ניהול תאריך ושעה באובייקט אחד והוצאת זמן במילישניות (Long).
+    private FusedLocationProviderClient fusedLocationClient; // רכיב של Google Play Services לשליפת מיקום מדויק במינימום צריכת סוללה.
 
+    // Activity Result API: הדרך המודרנית להפעלת מסך חיצוני וקבלת נתונים (מחליפה את onActivityResult הישן).
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -59,6 +60,7 @@ public class AddReminderActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_add_reminder);
 
+        // אתחול ספריית המקומות של גוגל באמצעות ה-API Key שהוגדר ב-BuildConfig.
         if (!Places.isInitialized()) {
             Places.initialize(getApplicationContext(), BuildConfig.PLACES_API_KEY);
         }
@@ -67,7 +69,7 @@ public class AddReminderActivity extends AppCompatActivity {
         initViews();
         selectedDateTime = Calendar.getInstance();
         setupListeners();
-        checkLocationPermission();
+        checkLocationPermission(); // בקשת הרשאת מיקום בזמן ריצה (Runtime Permission) בהתאם למדיניות האבטחה של אנדרואיד.
     }
 
     private void initViews() {
@@ -79,6 +81,8 @@ public class AddReminderActivity extends AppCompatActivity {
         etDescription = findViewById(R.id.etDescription);
         btnSaveReminder = findViewById(R.id.btnSaveReminder);
         btnBack = findViewById(R.id.btnBack);
+
+        // ביטול מקלדת בשדה המיקום כדי לאלץ בחירה מתוך רשימת הכתובות הרשמית של גוגל.
         etLocation.setFocusable(false);
         etLocation.setClickable(true);
     }
@@ -97,10 +101,11 @@ public class AddReminderActivity extends AppCompatActivity {
             selectedDateTime.set(Calendar.YEAR, year);
             selectedDateTime.set(Calendar.MONTH, month);
             selectedDateTime.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+            // %02d מבטיח תצוגה תקנית של שתי ספרות (למשל 09 במקום 9) עבור ימים וחודשים.
             etDate.setText(String.format(Locale.getDefault(), "%02d/%02d/%d", dayOfMonth, month + 1, year));
         }, selectedDateTime.get(Calendar.YEAR), selectedDateTime.get(Calendar.MONTH), selectedDateTime.get(Calendar.DAY_OF_MONTH));
 
-        datePicker.getDatePicker().setMinDate(System.currentTimeMillis());
+        datePicker.getDatePicker().setMinDate(System.currentTimeMillis()); // חסימת היכולת לבחור תאריך שכבר עבר.
         datePicker.show();
     }
 
@@ -129,11 +134,12 @@ public class AddReminderActivity extends AppCompatActivity {
 
         String uid = refAuth.getCurrentUser().getUid();
 
-        // בדיקת כפילויות לפני שמירה
+        // addListenerForSingleValueEvent: קריאה חד-פעמית של הנתונים מהענן לצורך בדיקת לוגיקה מקומית.
         FirebaseDatabase.getInstance().getReference("reminders").child(uid)
                 .addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        // לולאה הסורקת את המשימות הקיימות למניעת כפילות של שם וזמן בבסיס הנתונים.
                         for (DataSnapshot ds : snapshot.getChildren()) {
                             Task t = ds.getValue(Task.class);
                             if (t != null && t.getTitle().equalsIgnoreCase(title) && t.getRemindAt() == selectedMillis) {
@@ -142,10 +148,12 @@ public class AddReminderActivity extends AppCompatActivity {
                             }
                         }
 
+                        // יצירת מפתח ייחודי המבוסס על זמן המערכת כדי למנוע דריסת נתונים ב-Firebase.
                         String eventID = "task_" + System.currentTimeMillis();
                         Task newTask = new Task(eventID, title, selectedMillis, uid, location);
                         newTask.setRemindAt(selectedMillis);
 
+                        // setValue(newTask): הפיכת אובייקט ה-Java למבנה JSON ושמירתו בענן.
                         FirebaseDatabase.getInstance().getReference("reminders").child(uid).child(eventID).setValue(newTask)
                                 .addOnSuccessListener(aVoid -> {
                                     Toast.makeText(AddReminderActivity.this, "Reminder Saved!", Toast.LENGTH_SHORT).show();
@@ -157,6 +165,7 @@ public class AddReminderActivity extends AppCompatActivity {
     }
 
     private void openPlacesSearch() {
+        // הגדרת השדות המבוקשים מה-API של גוגל (חוסך במשאבים ועלויות על ידי בקשת מידע רלוונטי בלבד).
         List<Place.Field> fields = Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS);
         Intent intent = new Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
                 .setCountry("IL").setTypeFilter(TypeFilter.ADDRESS).build(this);
@@ -164,6 +173,7 @@ public class AddReminderActivity extends AppCompatActivity {
     }
 
     private void checkLocationPermission() {
+        // בדיקה האם המשתמש כבר אישר הרשאת מיקום בעבר.
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             getCurrentLocation();
         } else {
@@ -173,13 +183,17 @@ public class AddReminderActivity extends AppCompatActivity {
 
     private void getCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+
+        // שליפת המיקום האחרון הידוע של המכשיר דרך שירותי גוגל.
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
             if (location != null) {
+                // Geocoder: רכיב המבצע Reverse Geocoding - הפיכת קואורדינטות גיאוגרפיות לכתובת טקסטואלית.
                 Geocoder geocoder = new Geocoder(this, Locale.getDefault());
                 try {
                     List<Address> addresses = geocoder.getFromLocation(location.getLatitude(), location.getLongitude(), 1);
                     if (addresses != null && !addresses.isEmpty()) etLocation.setText(addresses.get(0).getAddressLine(0));
                 } catch (Exception e) { e.printStackTrace(); }
+                //הקוד הזה לוקח את המיקום הגולמי שהתקבל מהחיישן, מתרגם אותו לכתובת אנושית בעזרת ה-Geocoder, ומציג אותה אוטומטית למשתמש בתוך ה-EditText. השתמשתי בבדיקות null וב-try-catch כדי להבטיח יציבות גם אם אין חיבור לרשת באותו רגע
             }
         });
     }

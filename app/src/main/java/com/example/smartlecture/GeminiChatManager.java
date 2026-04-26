@@ -23,51 +23,38 @@ import kotlin.coroutines.Continuation;
 import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
 
-/**
- * The {@code GeminiChatManager} class provides a simplified interface for interacting with the
- * Gemini AI model.
- * It handles the initialization of the {@link GenerativeModel} and provides methods for chatting
- * with the model: sending text prompts and prompts with images to the model.
- */
+
 public class GeminiChatManager {
+    // שימוש בתבנית עיצוב Singleton: מבטיח שיהיה רק מנהל AI אחד בכל האפליקציה כדי לחסוך במשאבים.
     private static GeminiChatManager instance;
-    private GenerativeModel gemini;
-    private Chat chat;
+    private GenerativeModel gemini; // המודל הגנרטיבי עצמו
+    private Chat chat; // אובייקט המנהל את היסטוריית השיחה (Session)
     private final String TAG = "GeminiChatManager";
 
-    /**
-     * Initializes the Gemini model and starts a chat session.
-     */
+
     private void startChat() {
         chat = gemini.startChat(Collections.emptyList());
     }
 
-    /**
-     * Private constructor to initialize the Gemini model with a system prompt.
-     *
-     * @param systemPrompt The system prompt to initialize the model.
-     */
     private GeminiChatManager(String systemPrompt) {
         List<Part> parts = new ArrayList<Part>();
-        parts.add(new TextPart(systemPrompt));
+        parts.add(new TextPart(systemPrompt)); // הפיכת הטקסט ל"חלק" (Part) שהמודל יודע לקרוא
+
+        // אתחול המודל עם פרמטרים קבועים
         gemini = new GenerativeModel(
-                "gemini-2.0-flash",
-                BuildConfig.Gemini_API_Key,
+                "gemini-2.0-flash", // שם המודל (מהיר ויעיל למובייל)
+                BuildConfig.Gemini_API_Key, // מפתח ה-API שנשמר ב-BuildConfig מטעמי אבטחה
                 null,
                 null,
                 new RequestOptions(),
                 null,
                 null,
-                new Content(parts)
+                new Content(parts) // הגדרת תוכן המערכת (System Instructions)
         );
         startChat();
     }
 
-    /**
-     * Returns the singleton instance of {@code GeminiChatManager}.
-     *
-     * @return The singleton instance of {@code GeminiChatManager}.
-     */
+
     public static GeminiChatManager getInstance(String systemPrompt) {
         if (instance == null) {
             instance = new GeminiChatManager(systemPrompt);
@@ -75,27 +62,26 @@ public class GeminiChatManager {
         return instance;
     }
 
-    /**
-     * Sends a chat message to the Gemini model and receives a text response.
-     *
-     * @param prompt   The text prompt to send to the model.
-     * @param callback The callback to receive the response or error.
-     */
+
     public void sendChatMessage(String prompt, GeminiCallback callback) {
+        // sendMessage היא פעולה אסינכרונית (פועלת ברשת) ולכן דורשת "Continuation"
         chat.sendMessage(prompt,
                 new Continuation<GenerateContentResponse>() {
                     @NonNull
                     @Override
                     public CoroutineContext getContext() {
+                        // ריצה על הקשר ריק (בדרך כלל באנדרואיד זה יחזור ל-Main Thread דרך ה-Callback)
                         return EmptyCoroutineContext.INSTANCE;
                     }
 
                     @Override
                     public void resumeWith(@NonNull Object result) {
+                        // בדיקה האם הפעולה נכשלה
                         if (result instanceof Result.Failure) {
                             Log.i(TAG, "Error: " + ((Result.Failure) result).exception.getMessage());
                             callback.onFailure(((Result.Failure) result).exception);
                         } else {
+                            // הפעולה הצליחה - שליפת הטקסט מתוך אובייקט התגובה
                             Log.i(TAG, "Success: " + ((GenerateContentResponse) result).getText());
                             callback.onSuccess(((GenerateContentResponse) result).getText());
                         }
