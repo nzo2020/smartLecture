@@ -14,12 +14,24 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
+/**
+ * Activity for handling password reset requests through Firebase Authentication.
+ * Allows users to request a reset link via their registered email address.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class ForgotPasswordActivity extends AppCompatActivity {
 
-    // הגדרת משתני רכיבי הממשק (שדה אימייל ושדה להצגת הודעות מערכת)
+    /** Input field for the user's email address */
     private EditText eTEmail;
+    /** TextView to display error or success messages to the user */
     private TextView tVMsg;
 
+    /**
+     * Initializes the activity and connects the UI components to their XML definitions.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -30,6 +42,11 @@ public class ForgotPasswordActivity extends AppCompatActivity {
         tVMsg = findViewById(R.id.tvForgotMsg);
     }
 
+    /**
+     * Attempts to send a password reset email using Firebase Auth.
+     * Validates that the email field is not empty before proceeding.
+     * @param view The button view that triggered the reset request.
+     */
     public void resetPassword(View view) {
         // שליפת כתובת האימייל מהשדה והסרת רווחים מיותרים (trim)
         String email = eTEmail.getText().toString().trim();
@@ -63,7 +80,10 @@ public class ForgotPasswordActivity extends AppCompatActivity {
                 });
     }
 
-
+    /**
+     * Closes the current activity and returns to the previous screen.
+     * @param view The view that triggered the finish action.
+     */
     public void finishActivity(View view) {
         finish();
     }

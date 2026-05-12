@@ -24,7 +24,14 @@ import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
 import java.util.List;
 
-
+/**
+ * Activity for searching and filtering through saved lecture summaries.
+ * This class provides a multi-layered filtering system using Spinners for lecturers/titles
+ * and an EditText for free-text search, leveraging a polymorphic SearchManager.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class SearchSummariesActivity extends AppCompatActivity {
 
     // רכיבי ממשק המשתמש
@@ -33,14 +40,21 @@ public class SearchSummariesActivity extends AppCompatActivity {
     private ListView lvSearchResults;
 
     // מבני נתונים לניהול הרשימות
-    private List<Lecture> allLectures;           // כל ההרצאות שנטענו מה-Firebase
-    private List<Lecture> currentFilteredList;   // ההרצאות שמוצגות כרגע לאחר סינון
+    /** Full source list of lectures loaded from Firebase */
+    private List<Lecture> allLectures;
+    /** Subset of lectures that meet current filter criteria */
+    private List<Lecture> currentFilteredList;
     private List<String> lecturersNames, lectureTitles; // נתונים עבור התיבות הנפתחות (Spinners)
 
     // אדפטרים לקישור הנתונים לרכיבי התצוגה
     private ArrayAdapter<String> lecturerAdapter, titleAdapter, listAdapter;
-    private SearchManager searchManager; // המערכת המרכזית לביצוע חיפוש פולימורפי
+    /** Manager used to perform search operations across ISearchable objects */
+    private SearchManager searchManager;
 
+    /**
+     * Initializes the activity, sets up the UI, and starts the data loading process.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -51,6 +65,9 @@ public class SearchSummariesActivity extends AppCompatActivity {
         setupListeners();             // הגדרת מאזינים לשינויים בחיפוש
     }
 
+    /**
+     * Binds XML views and initializes adapters for Spinners and the ListView.
+     */
     private void initViews() {
         spinnerLecturer = findViewById(R.id.spinnerLecturer);
         spinnerTitle = findViewById(R.id.spinnerTitle);
@@ -79,7 +96,10 @@ public class SearchSummariesActivity extends AppCompatActivity {
         lvSearchResults.setAdapter(listAdapter);
     }
 
-
+    /**
+     * Sets up listeners for the Spinners and the free-text search field.
+     * Re-filters the data every time a selection is made or text is typed.
+     */
     private void setupListeners() {
         AdapterView.OnItemSelectedListener filterListener = new AdapterView.OnItemSelectedListener() {
             @Override
@@ -108,6 +128,10 @@ public class SearchSummariesActivity extends AppCompatActivity {
         findViewById(R.id.btnBackHome).setOnClickListener(v -> finish());
     }
 
+    /**
+     * Loads the current user's profile and fetches their lecture data from Firebase.
+     * Once loaded, it initializes the polymorphic SearchManager.
+     */
     private void setupUserAndLoadLectures() {
         if (refAuth.getCurrentUser() != null) {
             String uid = refAuth.getCurrentUser().getUid();
@@ -146,6 +170,9 @@ public class SearchSummariesActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Extracts unique lecturer names and titles from the loaded lectures to populate Spinners.
+     */
     private void updateSpinnersData() {
         lecturersNames.clear();
         lecturersNames.add("All Lecturers");
@@ -165,6 +192,10 @@ public class SearchSummariesActivity extends AppCompatActivity {
         titleAdapter.notifyDataSetChanged();
     }
 
+    /**
+     * Core filtering logic. It combines the SearchManager results with Spinner selections
+     * to produce the final filtered list displayed to the user.
+     */
     private void performFiltering() {
         if (searchManager == null) return;
 

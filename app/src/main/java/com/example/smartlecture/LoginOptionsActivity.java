@@ -11,9 +11,20 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
 
-
+/**
+ * Entry point activity that provides the user with options to either log in or register.
+ * This screen serves as the initial gateway for unauthenticated users.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class LoginOptionsActivity extends AppCompatActivity {
 
+    /**
+     * Initializes the activity, sets up the full-screen (EdgeToEdge) display,
+     * and configures navigation listeners for login and registration.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -30,6 +41,10 @@ public class LoginOptionsActivity extends AppCompatActivity {
 
         // הגדרת מאזין (Listener) ללחיצה על כפתור ההתחברות
         btnLogin.setOnClickListener(new View.OnClickListener() {
+            /**
+             * Navigates to the LoginActivity and closes the current activity.
+             * @param v The view that was clicked.
+             */
             @Override
             public void onClick(View v) {
                 // יצירת Intent למעבר ממסך האפשרויות למסך ההתחברות (LoginActivity)
@@ -43,6 +58,10 @@ public class LoginOptionsActivity extends AppCompatActivity {
 
         // הגדרת מאזין (Listener) ללחיצה על כפתור ההרשמה
         btnRegister.setOnClickListener(new View.OnClickListener() {
+            /**
+             * Navigates to the RegisterActivity, allowing the user to return if needed.
+             * @param v The view that was clicked.
+             */
             @Override
             public void onClick(View v) {
                 // יצירת Intent למעבר למסך ההרשמה (RegiserActivity)

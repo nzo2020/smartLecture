@@ -25,16 +25,29 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-
+/**
+ * Activity for viewing and managing lecture-related reminders.
+ * This class handles real-time synchronization with Firebase, provides automatic
+ * deletion of past events, and allows users to delete reminders manually.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class RemindersActivity extends AppCompatActivity {
 
     private ListView lvReminders;               // רכיב להצגת רשימה נגללת
     private MaterialButton btnAddReminder, btnBackHome;
+    /** Raw data list of Task objects fetched from the database */
     private List<Task> taskList;               // רשימת אובייקטים מסוג Task (הנתונים הגולמיים)
+    /** Formatted strings for display in the ListView */
     private List<String> displayList;          // רשימת מחרוזות מעוצבות להצגה ב-ListView
     private ArrayAdapter<String> adapter;      // המקשר בין רשימת הנתונים לרכיב ה-ListView
     private ReminderManager reminderManager;   // מנהל ההתראות במערכת (AlarmManager)
 
+    /**
+     * Initializes UI components, sets up listeners, and initiates the Firebase data fetch.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,6 +72,9 @@ public class RemindersActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Connects XML UI elements to Java objects and sets up the ArrayAdapter.
+     */
     private void initViews() {
         lvReminders = findViewById(R.id.lvReminders);
         btnAddReminder = findViewById(R.id.btnAddReminder);
@@ -72,6 +88,10 @@ public class RemindersActivity extends AppCompatActivity {
         lvReminders.setAdapter(adapter);
     }
 
+    /**
+     * Loads reminders from Firebase Realtime Database.
+     * Includes logic to automatically delete expired reminders and sort active ones by date.
+     */
     private void loadRemindersFromFirebase() {
         if (refAuth.getCurrentUser() == null) return;
         String uid = refAuth.getCurrentUser().getUid();
@@ -118,6 +138,10 @@ public class RemindersActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Deletes a task from Firebase and cancels its scheduled alarm in the system.
+     * @param position The position of the task in the list.
+     */
     private void deleteTask(int position) {
         Task taskToDelete = taskList.get(position);
         FirebaseDatabase.getInstance().getReference("reminders").child(refAuth.getCurrentUser().getUid())

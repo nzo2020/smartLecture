@@ -27,13 +27,30 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 
-
+/**
+ *A Foreground Service responsible for recording audio lessons, uploading them to Firebase,
+ * analyzing content with AI (Gemini), and managing smart calendar events.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class RecordingService extends Service {
+    /** MediaRecorder instance for capturing audio */
     private MediaRecorder recorder; // רכיב המערכת לביצוע הקלטת קול
+    /** Meta-data for the current recording session */
     private String eventId, userId, filePath, teacherName, lessonTitle, locationName;
+    /** Flag determining if the recording should be shared publicly */
     private boolean isPublic;
+    /** The start time of the recording in milliseconds */
     private long recordingStartTime;
 
+    /**
+     * Handles service commands based on Intent actions (Start, Stop, or Update).
+     * @param intent The intent containing parameters and actions.
+     * @param flags Additional data about the start request.
+     * @param startId A unique integer representing this specific request to start.
+     * @return Service sticky status.
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
@@ -59,6 +76,10 @@ public class RecordingService extends Service {
         return START_STICKY; // מבטיח שהשירות ינסה לאתחל את עצמו אם הוא נסגר בגלל מחסור בזיכרון
     }
 
+    /**
+     * Extracts parameters from the starting intent and prepares the local file path.
+     * @param intent The intent containing event data.
+     */
     private void setupParameters(Intent intent) {
         // משיכת כל המידע שנשלח מה-Activity (הקלטה, משתמש, מיקום וכו')
         eventId = intent.getStringExtra("EVENT_ID");
@@ -72,6 +93,9 @@ public class RecordingService extends Service {
         filePath = getExternalCacheDir().getAbsolutePath() + "/" + eventId + ".mp4";
     }
 
+    /**
+     * Configures and starts the MediaRecorder using the device microphone.
+     */
     private void startRecording() {
         try {
             // הגדרת רכיב ההקלטה: מקור (מיקרופון), פורמט (MPEG_4) וקידוד (AAC)
@@ -87,6 +111,9 @@ public class RecordingService extends Service {
         }
     }
 
+    /**
+     * Stops the recording, releases resources, and initiates the cloud upload process.
+     */
     private void stopRecording() {
         if (recorder != null) {
             try {
@@ -104,6 +131,9 @@ public class RecordingService extends Service {
         }
     }
 
+    /**
+     * Uploads the recorded MP4 file to Firebase Cloud Storage.
+     */
     private void uploadFileToStorage() {
         // העלאת קובץ ההקלטה ל-Firebase Storage תחת תיקיית recordings
         File file = new File(filePath);
@@ -116,6 +146,12 @@ public class RecordingService extends Service {
                 .addOnFailureListener(e -> stopSelf());
     }
 
+    /**
+     * Sends the recorded audio file to the Gemini AI model for summarization
+     * and extraction of smart calendar events.
+     * @param file The local recording file.
+     * @param audioUrl The URL of the uploaded audio file in Firebase.
+     */
     private void analyzeWithGemini(File file, String audioUrl) {
         try {
             // המרת קובץ ההקלטה למערך בייטים (Bytes) עבור ה-AI
@@ -156,6 +192,13 @@ public class RecordingService extends Service {
         } catch (Exception e) { stopSelf(); }
     }
 
+    /**
+     * Determines the appropriate Firebase Realtime Database path and saves the lesson data.
+     * If public, it performs a check to see if an existing summary from another user is higher quality.
+     * @param summary The analyzed summary text.
+     * @param links Related educational links.
+     * @param url The audio file URL.
+     */
     private void saveDataToFirebase(String summary, String links, String url) {
         DatabaseReference dbRef = FirebaseDatabase.getInstance().getReference();
 
@@ -193,6 +236,12 @@ public class RecordingService extends Service {
         }
     }
 
+    /**
+     * Saves lecture data using a transaction to ensure data integrity and updates user statistics.
+     * @param summaryToSave Final summary text.
+     * @param linksToSave Final links list.
+     * @param url Audio URL.
+     */
     private void executeFirebaseSaveWithTransaction(final String summaryToSave, final String linksToSave, String url) {
         String userName = FirebaseAuth.getInstance().getCurrentUser().getDisplayName();
         if (userName == null || userName.isEmpty()) userName = "Student";
@@ -250,6 +299,11 @@ public class RecordingService extends Service {
     }
 
 
+    /**
+     * Parses the summary text to find the special SMART_EVENTS_LIST header
+     * and extracts individual event lines.
+     * @param fullText The entire summary text analyzed by the AI.
+     */
     private void processSmartEvents(String fullText) {
         if (!fullText.contains("SMART_EVENTS_LIST:")) return;
         try {
@@ -263,6 +317,11 @@ public class RecordingService extends Service {
         } catch (Exception e) { Log.e("SmartLecture", "Error processing events", e); }
     }
 
+    /**
+     * Parses a single line representing a smart event (e.g., "[Exam | 12/12/2026 | 10:00 | Lab]")
+     * and schedules a reminder if the date is in the future.
+     * @param eventLine The raw text line from the AI summary.
+     */
     private void parseAndSaveSingleEvent(String eventLine) {
         try {
             // ניקוי הסוגריים והפרדה לפי הסימן "|"
@@ -286,6 +345,12 @@ public class RecordingService extends Service {
         } catch (Exception e) { Log.e("SmartLecture", "Parse failed", e); }
     }
 
+    /**
+     * Saves an extracted smart event to Firebase and schedules a system alarm via ReminderManager.
+     * @param title Event title.
+     * @param timestamp Event time.
+     * @param loc Event location.
+     */
     private void saveSingleReminderToFirebase(String title, long timestamp, String loc) {
         // יצירת ID ייחודי לכל תזכורת
         String uniqueId = "task_" + Math.abs((title + timestamp).hashCode());
@@ -304,6 +369,11 @@ public class RecordingService extends Service {
         });
     }
 
+    /**
+     * Builds the required Foreground notification for the service.
+     * @param text The current status text to display.
+     * @return A notification object.
+     */
     private Notification getNotification(String text) {
         // בניית התראה לשירות (חובה עבור Foreground Service)
         String cid = "record_chan";
@@ -318,6 +388,10 @@ public class RecordingService extends Service {
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now).setOngoing(true).build();
     }
 
+    /**
+     * Utility function providing a default date (one week from now) for AI events.
+     * @return Formatted date string.
+     */
     private String getOneWeekFromNow() {
         // פונקציית עזר למקרה ש-Gemini לא זיהה תאריך - קובעת שבוע מהיום כברירת מחדל
         java.util.Calendar cal = java.util.Calendar.getInstance();

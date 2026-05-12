@@ -25,12 +25,24 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.UserProfileChangeRequest;
 
+/**
+ * Activity for handling new user registration.
+ * It manages account creation via Firebase Authentication, profile updates,
+ * and synchronized data storage in the Firebase Realtime Database.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class RegiserActivity extends AppCompatActivity {
 
     // רכיבי קלט וטקסט מה-XML
     private EditText eTName, eTEmail, eTPass, eTConfirmPass;
     private TextView tvStatusMsg;
 
+    /**
+     * Initializes the activity and binds the registration UI components.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,7 +56,11 @@ public class RegiserActivity extends AppCompatActivity {
         tvStatusMsg = findViewById(R.id.tvStatusMsg);
     }
 
-
+    /**
+     * Orchestrates the user creation process. Validates input fields, checks password
+     * matching, and initiates the Firebase Auth creation request.
+     * @param view The view that triggered the user creation attempt.
+     */
     public void createUser(View view) {
         String name = eTName.getText().toString().trim();
         String email = eTEmail.getText().toString().trim();
@@ -106,7 +122,13 @@ public class RegiserActivity extends AppCompatActivity {
                 });
     }
 
-
+    /**
+     * Stores the additional user metadata (UID, Email, Name) in the Realtime Database.
+     * @param uid Unique identifier provided by Firebase Auth.
+     * @param email The registered email address.
+     * @param name The user's full name.
+     * @param pd The progress dialog to dismiss once the operation completes.
+     */
     private void saveUserToDatabase(String uid, String email, String name, ProgressDialog pd) {
         // יצירת מופע חדש של מחלקת User (שמכילה UID, אימייל ושם)
         User newUser = new User(uid, email, name);
@@ -132,20 +154,29 @@ public class RegiserActivity extends AppCompatActivity {
                 });
     }
 
-
+    /**
+     * Helper method to display error messages in red within the UI.
+     * @param msg The error message to display.
+     */
     private void setStatusError(String msg) {
         tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
         tvStatusMsg.setText(msg);
     }
 
-
+    /**
+     * Navigates the user back to the login screen.
+     * @param view The view that triggered the navigation.
+     */
     public void goToLogin(View view) {
         Intent intent = new Intent(this, LoginActivity.class);
         startActivity(intent);
         finish();
     }
 
-
+    /**
+     * Handles specific Firebase Auth exceptions to provide user-friendly feedback.
+     * @param exp The exception encountered during registration.
+     */
     private void handleError(Exception exp) {
         tvStatusMsg.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
         if (exp instanceof FirebaseAuthWeakPasswordException) {

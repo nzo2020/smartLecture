@@ -13,6 +13,14 @@ import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Represents a user in the SmartLecture system.
+ * This class manages user profile data and handles the complex logic of fetching
+ * and merging lecture events from both public and private Firebase database paths.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class User {
     private String userID;      // מזהה ייחודי מ-Firebase Auth
     private String email;       // כתובת המייל של המשתמש
@@ -22,14 +30,26 @@ public class User {
     // רשימה פנימית השומרת את האירועים שנמשכו מהענן לצורך גישה מהירה
     private List<Lecture> learningEvents = new ArrayList<>();
 
+    /**
+     * Callback interface for asynchronous lecture fetching operations.
+     */
     public interface OnEventsFetchListener {
         void onEventsFetched(List<Lecture> events);
         void onError(String error);
     }
 
+    /**
+     * Default constructor required for Firebase data deserialization.
+     */
     // Constructor ריק נדרש עבור Firebase לצורך המרת הנתונים לאובייקט (Deserialization)
     public User() {}
 
+    /**
+     * Constructs a new User profile.
+     * @param userID Unique identifier from Firebase Auth.
+     * @param email User's registered email.
+     * @param name User's full name.
+     */
     // בנאי ליצירת משתמש חדש
     public User(String userID, String email, String name) {
         this.userID = userID;
@@ -39,10 +59,11 @@ public class User {
     }
 
     /**
-     * פונקציה מורכבת למשיכת כל ההרצאות.
-     * הלוגיקה כאן מחברת בין שני מקומות שונים ב-Database:
-     * 1. Lectures/pub_true (הרצאות שכולם יכולים לראות)
-     * 2. Lectures/pub_false (הרצאות אישיות של המשתמש)
+     * Fetches all relevant lectures for the user by performing a nested query:
+     * 1. Pulls global public lectures from "Lectures/pub_true".
+     * 2. Pulls user-specific private lectures from "Lectures/pub_false".
+     * The results are merged into a single list while preventing duplicates.
+     * * @param listener The listener that will receive the merged list or error message.
      */
     public void fetchEvents(final OnEventsFetchListener listener) {
         // וידוא שיש לנו UID עבודה - או מהאובייקט או ישירות מה-Auth
@@ -104,7 +125,12 @@ public class User {
         });
     }
 
-
+    /**
+     * Helper method to iterate through a DataSnapshot and convert JSON objects to Lecture instances.
+     * Implements a check to ensure no duplicate lectures (based on ID) are added to the list.
+     * * @param snapshot The Firebase data snapshot to parse.
+     * @param listToFill The target list where validated lectures will be added.
+     */
     private void addLecturesFromSnapshot(DataSnapshot snapshot, List<Lecture> listToFill) {
         if (!snapshot.exists()) return;
 

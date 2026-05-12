@@ -7,18 +7,35 @@ import android.content.Intent;
 import android.os.Build;
 import java.util.List;
 
-
+/**
+ * Manager class responsible for scheduling and canceling system-wide reminders.
+ * It interfaces with the Android AlarmManager to ensure notifications are triggered
+ * even if the application is not actively running.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class ReminderManager {
+    /** Local list to track tasks currently managed in memory */
     private List<Task> managedTasks; // רשימה המנהלת את המשימות בזיכרון האפליקציה
+    /** Context used to access system services */
     private Context context;        // הקשר האפליקציה הנדרש לגישה לשירותי מערכת
 
-    // בנאי המקבל הקשר ורשימת משימות
+    /**
+     * Constructs a ReminderManager with a specific context and task list.
+     * @param context The application context.
+     * @param managedTasks The list of tasks to be managed.
+     */
     public ReminderManager(Context context, List<Task> managedTasks) {
         this.context = context;
         this.managedTasks = managedTasks;
     }
 
-
+    /**
+     * Schedules a new system alarm for the given task.
+     * Uses unique request codes based on task IDs to prevent overlapping alarms.
+     * @param task The task object containing title, location, and trigger time.
+     */
     public void addTask(Task task) {
         long triggerTime = task.getRemindAt(); // שליפת זמן היעד לביצוע התזכורת
 
@@ -45,7 +62,7 @@ public class ReminderManager {
         int requestCode = task.getEventID().hashCode();
 
         //יצירת ה-PendingIntent:זהו "ייפוי כוח" שאנחנו נותנים למערכת ההפעלה להריץ את ה-Intent שלנו בשמנו בעתיד. FLAG_IMMUTABLE: דרישת אבטחה בגרסאות אנדרואיד חדשות.
-         //
+        //
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
                 context,
                 requestCode,
@@ -65,6 +82,10 @@ public class ReminderManager {
         }
     }
 
+    /**
+     * Cancels an existing alarm from the system and removes it from the local list.
+     * @param task The task for which the reminder should be canceled.
+     */
     //ביטול תזכורת קיימת מה-AlarmManager.משתמש באותו requestCode כדי למצוא את ה-PendingIntent הרלוונטי ולבטל אותו.
     public void cancelReminder(Task task) {
         Intent intent = new Intent(context, ReminderBroadcastReceiver.class);

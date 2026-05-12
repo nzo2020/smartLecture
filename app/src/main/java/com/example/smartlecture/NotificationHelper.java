@@ -6,7 +6,21 @@ import android.content.Context;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 
+/**
+ * Helper class designed to manage and display system notifications.
+ * Specifically handles notifications related to the completion of AI-generated lecture summaries.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class NotificationHelper {
+
+    /**
+     * Creates and displays a high-priority notification to inform the user that a summary is ready.
+     * Handles notification channel creation for Android Oreo (API 26) and above.
+     * * @param context The application context.
+     * @param teacher The name of the lecturer associated with the completed summary.
+     */
     public static void showSummaryReadyNotification(Context context, String teacher) {
         // השגת שירות ה-NotificationManager של מערכת האנדרואיד
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);

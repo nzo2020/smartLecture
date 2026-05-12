@@ -21,13 +21,26 @@ import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException;
 import com.google.firebase.auth.FirebaseAuthInvalidUserException;
 
+/**
+ * Activity responsible for user authentication and login.
+ * Manages user sessions using Firebase Auth and local preferences for persistent login.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class LoginActivity extends AppCompatActivity {
 
-    // הצהרה על רכיבי ממשק המשתמש ומשתנים לאחסון מקומי
+    /** Input fields for user credentials */
     private EditText eTEmail, eTPass;
+    /** TextView to display status or error messages to the user */
     private TextView tVMsg;
+    /** SharedPreferences to store the "stay connected" preference */
     private SharedPreferences sharedPref; // רכיב לשמירת נתונים קטנים במכשיר (כמו מצב "זכור אותי")
 
+    /**
+     * Initializes the activity and binds the UI components.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -42,6 +55,10 @@ public class LoginActivity extends AppCompatActivity {
         sharedPref = getSharedPreferences("USER_SETTINGS", MODE_PRIVATE);
     }
 
+    /**
+     * Checks if a user is already logged in and has requested to stay connected.
+     * If true, navigates automatically to the Dashboard.
+     */
     @Override
     protected void onStart() {
         super.onStart();
@@ -53,6 +70,11 @@ public class LoginActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Validates input and attempts to sign in the user via Firebase.
+     * Displays a progress dialog during the network request.
+     * @param view The view that triggered the login attempt.
+     */
     public void loginUser(View view) {
         String email = eTEmail.getText().toString().trim();
         String pass = eTPass.getText().toString().trim();
@@ -88,6 +110,10 @@ public class LoginActivity extends AppCompatActivity {
                 });
     }
 
+    /**
+     * Analyzes authentication exceptions and provides descriptive error messages in the UI.
+     * @param exp The exception caught during the login attempt.
+     */
     private void handleLoginErrors(Exception exp) {
         if (exp instanceof FirebaseAuthInvalidUserException) {
             // מקרה שבו האימייל לא קיים במערכת
@@ -104,16 +130,27 @@ public class LoginActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Navigates to the DashboardActivity and finishes the current login screen.
+     */
     private void goToDashboard() {
         Intent intent = new Intent(this, DashboardActivity.class);
         startActivity(intent);
         finish(); // השמדת ה-Activity הנוכחי כדי שלא יהיה ניתן לחזור אליו בלחיצה על Back
     }
 
+    /**
+     * Navigates to the registration screen.
+     * @param view The view that triggered the navigation.
+     */
     public void goToRegister(View view) {
         startActivity(new Intent(this, RegiserActivity.class));
     }
 
+    /**
+     * Navigates to the forgot password screen.
+     * @param view The view that triggered the navigation.
+     */
     public void goToForgotPass(View view) {
         startActivity(new Intent(this, ForgotPasswordActivity.class));
     }

@@ -31,9 +31,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ViewSummeryActivity - מסך צפייה בסיכומי הרצאות.
- * המשתמש בוחר הרצאה מתוך Spinner (תיבה נפתחת), והמערכת מציגה את הסיכום,
- * הלינקים הרלוונטיים ואפשרות להאזנה להקלטה.
+ * Activity for viewing generated lecture summaries.
+ * It provides a dropdown interface (Spinner) to select a lecture, displays the
+ * summarized content, handles clickable web links via Linkify, and manages
+ * Spannable styling for audio recording access.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
  */
 public class ViewSummeryActivity extends AppCompatActivity {
 
@@ -43,10 +47,16 @@ public class ViewSummeryActivity extends AppCompatActivity {
     private MaterialButton btnShare, btnBackHome;
 
     // רשימות לניהול הנתונים
-    private List<Lecture> lectureList;    // רשימת אובייקטי ההרצאה המלאים
-    private List<String> lectureTitles;   // רשימת הכותרות שיופיעו ב-Spinner
+    /** Internal list of lecture objects retrieved from the database */
+    private List<Lecture> lectureList;
+    /** List of titles displayed in the selection spinner */
+    private List<String> lectureTitles;
     private ArrayAdapter<String> adapter; // האדפטר שמקשר בין הרשימה ל-Spinner
 
+    /**
+     * Initializes the activity, binds views, and triggers the Firebase lecture loading process.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,7 +85,7 @@ public class ViewSummeryActivity extends AppCompatActivity {
     }
 
     /**
-     * אתחול רכיבי הממשק והגדרת האדפטר הראשוני ל-Spinner
+     * Configures the initial UI state and initializes the ArrayAdapter for the Spinner.
      */
     private void initViews() {
         spSummarySelector = findViewById(R.id.spSummarySelector);
@@ -94,8 +104,8 @@ public class ViewSummeryActivity extends AppCompatActivity {
     }
 
     /**
-     * טעינת המשתמש וההרצאות המשויכות אליו.
-     * התהליך כולל שליפת אובייקט ה-User כדי לדעת מה ה-UID והשם שלו ב-Database.
+     * Authenticates the user and fetches their lectures using the User class fetchEvents logic.
+     * Updates the Spinner adapter upon successful retrieval.
      */
     private void loadUserAndLectures() {
         if (refAuth.getCurrentUser() != null) {
@@ -154,8 +164,9 @@ public class ViewSummeryActivity extends AppCompatActivity {
     }
 
     /**
-     * הצגת פרטי ההרצאה הנבחרת על המסך.
-     * כולל עיבוד טקסט, הפיכת לינקים ללחיצים וטיפול בקישור להקלטה.
+     * Populates the screen with details of the selected lecture.
+     * Cleans raw AI data, formats web links, and creates a clickable Spannable for cloud audio.
+     * @param position The position of the selected item in the Spinner.
      */
     private void displayLectureDetails(int position) {
         // בדיקה אם נבחר פריט תקין (לא שורת ההנחיה)
@@ -235,8 +246,8 @@ public class ViewSummeryActivity extends AppCompatActivity {
     }
 
     /**
-     * פונקציית שיתוף: בונה הודעת טקסט ארוכה עם כל פרטי הסיכום
-     * ושולחת אותה דרך ה-Intent Chooser לאפליקציות כמו WhatsApp או Gmail.
+     * Compiles the summary details into a plain text message and opens
+     * a system chooser to share it via external apps.
      */
     private void shareSummary() {
         int selectedPos = spSummarySelector.getSelectedItemPosition();

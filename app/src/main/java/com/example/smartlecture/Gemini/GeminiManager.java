@@ -23,18 +23,31 @@ import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
 
 /**
- * The {@code GeminiManager} class provides a simplified interface for interacting with the Gemini AI model.
- * It handles the initialization of the {@link GenerativeModel} and provides methods for sending text prompts
- * and prompts with images to the model.
+ * Singleton manager class responsible for communicating with the Google Gemini AI API.
+ * It provides methods to generate content based on text, images, and raw file data.
+ * <p>
+ * This class uses the "gemini-2.5-flash" model and handles the bridge between
+ * Kotlin Coroutines and Java using the {@link Continuation} interface.
+ * </p>
+ *
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
  */
 public class GeminiManager {
+
+    /** The single instance of the GeminiManager */
     private static GeminiManager instance;
+
+    /** The core generative model object from Google's AI SDK */
     private GenerativeModel gemini;
+
+    /** Tag used for logging events and errors within this class */
     private final String TAG = "GeminiManager";
 
     /**
-     * Private constructor to enforce the Singleton pattern.
-     * Initializes the {@link GenerativeModel} with the specified model name and API key.
+     * Private constructor that initializes the GenerativeModel using the API Key
+     * defined in the project's BuildConfig.
      */
     private GeminiManager() {
         gemini = new GenerativeModel(
@@ -44,9 +57,8 @@ public class GeminiManager {
     }
 
     /**
-     * Returns the singleton instance of {@code GeminiManager}.
-     *
-     * @return The singleton instance of {@code GeminiManager}.
+     * Provides access to the Singleton instance of GeminiManager.
+     * @return The existing instance or a new one if it hasn't been created yet.
      */
     public static GeminiManager getInstance() {
         if (instance == null) {
@@ -56,10 +68,9 @@ public class GeminiManager {
     }
 
     /**
-     * Sends a text prompt to the Gemini model and receives a text response.
-     *
-     * @param prompt   The text prompt to send to the model.
-     * @param callback The callback to receive the response or error.
+     * Sends a simple text-only prompt to the AI.
+     * @param prompt The question or instruction for the AI.
+     * @param callback The interface to handle the AI's response or failure.
      */
     public void sendTextPrompt(String prompt, GeminiCallback callback) {
         gemini.generateContent(prompt,
@@ -83,11 +94,10 @@ public class GeminiManager {
     }
 
     /**
-     * Sends a text prompt along with a photo to the Gemini model and receives a text response.
-     *
-     * @param prompt   The text prompt to send to the model.
-     * @param photo    The photo to send to the model.
-     * @param callback The callback to receive the response or error.
+     * Sends a text prompt combined with an image (multimodal request).
+     * @param prompt Contextual text explaining the image.
+     * @param photo A Bitmap object representing the image to analyze.
+     * @param callback The interface to handle the AI's response or failure.
      */
     public void sendTextWithPhotoPrompt(String prompt, Bitmap photo, GeminiCallback callback) {
         List<Part> parts = new ArrayList<>();
@@ -118,12 +128,11 @@ public class GeminiManager {
     }
 
     /**
-     * Sends a text prompt along with a file to the Gemini model and receives a text response.
-     *
-     * @param prompt    The text prompt to send to the model.
-     * @param bytes     The file to send to the model.
-     * @param mimeType  The MIME type of the file.
-     * @param callback  The callback to receive the response or error.
+     * Sends a text prompt with a raw file (e.g., audio, PDF) provided as a byte array.
+     * @param prompt The instruction for processing the file.
+     * @param bytes The raw data of the file.
+     * @param mimeType The type of file (e.g., "audio/wav", "application/pdf").
+     * @param callback The interface to handle the AI's response or failure.
      */
     public void sendTextWithFilePrompt(String prompt, byte[] bytes, String mimeType, GeminiCallback callback) {
         List<Part> parts = new ArrayList<>();

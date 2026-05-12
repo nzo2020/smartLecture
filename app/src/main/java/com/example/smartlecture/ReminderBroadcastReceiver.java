@@ -8,9 +8,22 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
-
+/**
+ * Receiver responsible for handling scheduled reminder alarms.
+ * When an alarm triggers, this class extracts event data from the intent and
+ * displays a system notification to the user.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class ReminderBroadcastReceiver extends BroadcastReceiver {
 
+    /**
+     * Called when the BroadcastReceiver is receiving an Intent broadcast by the AlarmManager.
+     * Extracts reminder details and triggers a high-priority notification if permissions are granted.
+     * * @param context The Context in which the receiver is running.
+     * @param intent The Intent containing the reminder's title and location.
+     */
     @Override
     public void onReceive(Context context, Intent intent) {
         // שליפת נתוני התזכורת שנשלחו יחד עם ה-Intent

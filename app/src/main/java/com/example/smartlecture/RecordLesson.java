@@ -29,7 +29,15 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.*;
 
-
+/**
+ * Activity responsible for the lecture recording interface.
+ * Features include real-time GPS location tracking, Google Places integration,
+ * Foreground Service management for audio recording, and a collaborative
+ * summary synchronization engine that pulls the best AI results from peer students.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class RecordLesson extends AppCompatActivity {
 
     // רכיבי ממשק משתמש
@@ -41,15 +49,17 @@ public class RecordLesson extends AppCompatActivity {
     // ניהול זמן ומיקום
     private long startTime = 0;
     private Handler timerHandler = new Handler(); // אחראי על עדכון שעון העצר במסך
+    /** Client for accessing Google Play services location APIs */
     private FusedLocationProviderClient fusedLocationClient; // ספריית גוגל לקבלת מיקום מדויק
     private String finalLocationName = "Unknown Location";
 
     // ניהול סנכרון סיכומים מ-Firebase
+    /** Listener for detecting higher-quality summaries from other users in real-time */
     private ValueEventListener sharedSummaryListener;
     private DatabaseReference currentLectureRef;
     private String lastProcessedSummary = "";
 
-
+    /** Launcher for the Google Places Autocomplete intent */
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -60,6 +70,10 @@ public class RecordLesson extends AppCompatActivity {
                 }
             });
 
+    /**
+     * Initializes the activity, Google Places, and location services.
+     * Sets up the BroadcastReceiver for recording completion.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -80,6 +94,9 @@ public class RecordLesson extends AppCompatActivity {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? Context.RECEIVER_EXPORTED : 0);
     }
 
+    /**
+     * Connects XML UI components to Java objects.
+     */
     private void initViews() {
         // קישור רכיבים מה-XML למשתנים ב-Java
         etLessonTitle = findViewById(R.id.etLessonTitle);
@@ -95,6 +112,9 @@ public class RecordLesson extends AppCompatActivity {
         btnStop.setEnabled(false); // כפתור העצירה כבוי עד שתתחיל הקלטה
     }
 
+    /**
+     * Sets up click listeners for manual location entry and recording controls.
+     */
     private void setupListeners() {
         // לחיצה על טקסט המיקום מאפשרת חיפוש מקום ידני בגוגל
         tvLocation.setOnClickListener(v -> {
@@ -115,6 +135,7 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     /**
+     * Starts the RecordingService as a Foreground Service and passes lesson metadata.
      * הפעלת שירות ההקלטה (RecordingService) כ-Foreground Service.
      * מעבירים ל-Service את כל נתוני ההרצאה כדי שיוכל לטפל בהם גם אם המסך נסגר.
      */
@@ -141,6 +162,9 @@ public class RecordLesson extends AppCompatActivity {
         timerHandler.postDelayed(timerRunnable, 0); // הפעלת שעון העצר במסך
     }
 
+    /**
+     * Signals the RecordingService to stop the audio capture.
+     */
     private void stopRecordingProcess() {
         Intent intent = new Intent(this, RecordingService.class);
         intent.setAction("STOP_RECORDING");
@@ -149,6 +173,7 @@ public class RecordLesson extends AppCompatActivity {
         timerHandler.removeCallbacks(timerRunnable); // עצירת עדכון שעון העצר
     }
 
+    /** Runnable for updating the recording timer UI every 500ms */
     private final Runnable timerRunnable = new Runnable() {
         @Override public void run() {
             long millis = System.currentTimeMillis() - startTime;
@@ -158,6 +183,7 @@ public class RecordLesson extends AppCompatActivity {
         }
     };
 
+    /** Checks for location permissions and initiates GPS retrieval if granted. */
     private void checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             getCurrentLocation();
@@ -166,7 +192,9 @@ public class RecordLesson extends AppCompatActivity {
         }
     }
 
-
+    /**
+     * Retrieves the device's current GPS location and converts it to a readable address using Geocoder.
+     */
     private void getCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
@@ -184,7 +212,10 @@ public class RecordLesson extends AppCompatActivity {
         });
     }
 
-
+    /**
+     * Validates that all necessary runtime permissions (Audio, Notifications) are granted.
+     * @return true if all permissions are available.
+     */
     private boolean checkPermissions() {
         List<String> permissionsNeeded = new ArrayList<>();
 
@@ -206,6 +237,8 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     /**
+     * Receiver that handles the "RECORDING_FINISHED" broadcast from the Service.
+     * Updates the UI with the final AI summary and links.
      * קבלת תוצאות מה-Service:
      * ברגע שה-AI מסיים לעבוד, ה-Service שולח Broadcast. ה-Activity מקבל אותו,
      * מציג את הסיכום על המסך והופך קישורים ללחיצים (Linkify).
@@ -230,6 +263,9 @@ public class RecordLesson extends AppCompatActivity {
         }
     };
 
+    /**
+     * Resets the input fields and timer for a new recording session.
+     */
     private void resetUI() {
         etLessonTitle.setText("");
         etTeacherName.setText("");
@@ -240,6 +276,8 @@ public class RecordLesson extends AppCompatActivity {
     }
 
     /**
+     * Starts a real-time sync with Firebase to find "twin" lectures (same time/place).
+     * If another user generates a longer/better summary, this UI updates automatically.
      * מנגנון הסנכרון החברתי (Collaborative Summary Sync):
      * מאזין לכל ההרצאות הציבוריות ב-Firebase. אם משתמש אחר הקליט את אותה הרצאה
      * (לפי זמן ומיקום) והפיק סיכום ארוך/טוב יותר, המסך יתעדכן אוטומטית בסיכום המשופר.
@@ -301,6 +339,9 @@ public class RecordLesson extends AppCompatActivity {
         allPublicRef.addValueEventListener(sharedSummaryListener);
     }
 
+    /**
+     * Unregisters listeners and receivers to prevent memory leaks.
+     */
     @Override
     protected void onDestroy() {
         super.onDestroy();

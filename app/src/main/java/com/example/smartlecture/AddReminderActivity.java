@@ -36,15 +36,28 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * This class adds a reminder to the Google Calendar and the reminder board.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class AddReminderActivity extends AppCompatActivity {
 
+    /** Text input fields for user data */
     private TextInputEditText etReminderName, etDate, etTime, etLocation, etDescription;
+    /** Layout wrapper for the location input field */
     private TextInputLayout tilLocation;
+    /** Button to save the reminder */
     private MaterialButton btnSaveReminder;
+    /** Button to navigate back */
     private ImageButton btnBack;
+    /** Calendar object to manage selected date and time */
     private Calendar selectedDateTime; // שימוש ב-Calendar מאפשר ניהול תאריך ושעה באובייקט אחד והוצאת זמן במילישניות (Long).
+    /** Client for retrieving device location services */
     private FusedLocationProviderClient fusedLocationClient; // רכיב של Google Play Services לשליפת מיקום מדויק במינימום צריכת סוללה.
 
+    /** Launcher to handle results from the Google Places Autocomplete activity */
     // Activity Result API: הדרך המודרנית להפעלת מסך חיצוני וקבלת נתונים (מחליפה את onActivityResult הישן).
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -55,6 +68,10 @@ public class AddReminderActivity extends AppCompatActivity {
                 }
             });
 
+    /**
+     * Called when the activity is first created. Initializes services and UI components.
+     * @param savedInstanceState If the activity is being re-initialized after previously being shut down, this contains the data it most recently supplied.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -72,6 +89,9 @@ public class AddReminderActivity extends AppCompatActivity {
         checkLocationPermission(); // בקשת הרשאת מיקום בזמן ריצה (Runtime Permission) בהתאם למדיניות האבטחה של אנדרואיד.
     }
 
+    /**
+     * Initializes the UI views and binds them to the code.
+     */
     private void initViews() {
         etReminderName = findViewById(R.id.etReminderName);
         etDate = findViewById(R.id.etDate);
@@ -87,6 +107,9 @@ public class AddReminderActivity extends AppCompatActivity {
         etLocation.setClickable(true);
     }
 
+    /**
+     * Sets up click listeners for buttons and input fields.
+     */
     private void setupListeners() {
         etDate.setOnClickListener(v -> showDatePicker());
         etTime.setOnClickListener(v -> showTimePicker());
@@ -96,6 +119,9 @@ public class AddReminderActivity extends AppCompatActivity {
         tilLocation.setEndIconOnClickListener(v -> openPlacesSearch());
     }
 
+    /**
+     * Displays a DatePickerDialog to select a date and updates the UI and the Calendar object.
+     */
     private void showDatePicker() {
         DatePickerDialog datePicker = new DatePickerDialog(this, (view, year, month, dayOfMonth) -> {
             selectedDateTime.set(Calendar.YEAR, year);
@@ -109,6 +135,9 @@ public class AddReminderActivity extends AppCompatActivity {
         datePicker.show();
     }
 
+    /**
+     * Displays a TimePickerDialog to select a time and updates the UI and the Calendar object.
+     */
     private void showTimePicker() {
         new TimePickerDialog(this, (view, hourOfDay, minute) -> {
             selectedDateTime.set(Calendar.HOUR_OF_DAY, hourOfDay);
@@ -117,6 +146,9 @@ public class AddReminderActivity extends AppCompatActivity {
         }, selectedDateTime.get(Calendar.HOUR_OF_DAY), selectedDateTime.get(Calendar.MINUTE), true).show();
     }
 
+    /**
+     * Validates input data, checks for duplicates in Firebase, and saves the new reminder.
+     */
     private void saveReminderWithCheck() {
         String title = etReminderName.getText().toString().trim();
         String location = etLocation.getText().toString().trim();
@@ -164,6 +196,9 @@ public class AddReminderActivity extends AppCompatActivity {
                 });
     }
 
+    /**
+     * Opens the Google Places Autocomplete UI to search for and select an address.
+     */
     private void openPlacesSearch() {
         // הגדרת השדות המבוקשים מה-API של גוגל (חוסך במשאבים ועלויות על ידי בקשת מידע רלוונטי בלבד).
         List<Place.Field> fields = Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS);
@@ -172,6 +207,9 @@ public class AddReminderActivity extends AppCompatActivity {
         autocompleteLauncher.launch(intent);
     }
 
+    /**
+     * Checks if location permissions are granted. If so, retrieves current location; otherwise, requests permission.
+     */
     private void checkLocationPermission() {
         // בדיקה האם המשתמש כבר אישר הרשאת מיקום בעבר.
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -181,6 +219,9 @@ public class AddReminderActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Retrieves the device's last known location and converts it to a textual address using Geocoder.
+     */
     private void getCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
 

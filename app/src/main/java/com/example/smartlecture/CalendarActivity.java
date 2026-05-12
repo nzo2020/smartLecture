@@ -47,16 +47,28 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Activity for managing the Google Calendar view and adding new events.
+ * Handles WebView synchronization, location-based event creation, and Firebase integration.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class CalendarActivity extends AppCompatActivity {
 
-    // הגדרת רכיבי ממשק המשתמש (UI) ומשתני מחלקה
+    /** WebView component to display the Google Calendar website */
     private WebView webViewCalendar;
+    /** Buttons for UI interaction */
     private MaterialButton btnAddEvent, btnBackHome;
+    /** Unique ID for the Notification Channel required for Android 8.0+ */
     private final String CHANNEL_ID = "MyReminderChannel"; // מזהה ייחודי עבור ערוץ ההתראות (נדרש מ-Android 8.0+)
 
+    /** Client to interact with the Fused Location Provider for geographic location */
     private FusedLocationProviderClient fusedLocationClient; // רכיב לשליפת מיקום גיאוגרפי
+    /** Reference to the location input field inside the dynamic dialog */
     private EditText etCurrentDialogLocation;
 
+    /** Launcher to handle the result from Google Places Autocomplete search */
     // הגדרת משגר (Launcher) לקבלת תוצאה מחיפוש מקומות של גוגל (Autocomplete)
     private final ActivityResultLauncher<Intent> autocompleteLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -70,6 +82,10 @@ public class CalendarActivity extends AppCompatActivity {
                 }
             });
 
+    /**
+     * Initializes the activity, Google Places, location client, and UI settings.
+     * @param savedInstanceState Data from the previous state of the activity.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -94,12 +110,18 @@ public class CalendarActivity extends AppCompatActivity {
         btnBackHome.setOnClickListener(v -> finish());
     }
 
+    /**
+     * Finds and assigns UI components to class variables.
+     */
     private void initViews() {
         webViewCalendar = findViewById(R.id.webViewCalendar);
         btnAddEvent = findViewById(R.id.btnAddEvent);
         btnBackHome = findViewById(R.id.btnBackHome);
     }
 
+    /**
+     * Configures the WebView settings to enable JavaScript, storage, and internal browsing.
+     */
     private void setupWebView() {
         // הגדרת ה-WebView להצגת יומן גוגל בתוך האפליקציה
         WebSettings webSettings = webViewCalendar.getSettings();
@@ -109,6 +131,9 @@ public class CalendarActivity extends AppCompatActivity {
         webViewCalendar.loadUrl("https://calendar.google.com/calendar/u/0/r");
     }
 
+    /**
+     * Inflates and displays a dialog for adding a new event with Date and Time pickers.
+     */
     private void showAddEventDialog() {
         // ניפוח (Inflate) של עיצוב הדיאלוג מתוך קובץ XML
         View dialogView = getLayoutInflater().inflate(R.layout.activity_dialog_add_event, null);
@@ -181,6 +206,13 @@ public class CalendarActivity extends AppCompatActivity {
                 .show();
     }
 
+    /**
+     * Checks Firebase for duplicate reminders before saving the new task.
+     * @param title Title of the event.
+     * @param location Location address.
+     * @param desc Description of the event.
+     * @param time Timestamp in milliseconds.
+     */
     private void checkDuplicateAndSave(String title, String location, String desc, long time) {
         if (refAuth.getCurrentUser() == null) return;
         String uid = refAuth.getCurrentUser().getUid();
@@ -219,6 +251,13 @@ public class CalendarActivity extends AppCompatActivity {
                 });
     }
 
+    /**
+     * Saves the task data to the Firebase Realtime Database.
+     * @param id Unique event ID.
+     * @param title Event title.
+     * @param location Location address.
+     * @param time Timestamp in milliseconds.
+     */
     private void saveToFirebase(String id, String title, String location, long time) {
         if (refAuth.getCurrentUser() == null) return;
         String uid = refAuth.getCurrentUser().getUid();
@@ -233,6 +272,10 @@ public class CalendarActivity extends AppCompatActivity {
                 .setValue(newTask);
     }
 
+    /**
+     * Fetches current GPS location and translates it to a readable address for the UI.
+     * @param locationField The EditText to populate with the address.
+     */
     private void setCurrentLocationInDialog(EditText locationField) {
         // בדיקת הרשאת מיקום לפני שליפה
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -254,6 +297,9 @@ public class CalendarActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Launches the Google Places Autocomplete Intent for address selection.
+     */
     private void openPlacesSearch() {
         // הפעלת ממשק ה-Autocomplete של גוגל לחיפוש כתובת
         List<Place.Field> fields = Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS);
@@ -264,6 +310,13 @@ public class CalendarActivity extends AppCompatActivity {
         autocompleteLauncher.launch(intent);
     }
 
+    /**
+     * Synchronizes the new event with external calendar apps via Intent.
+     * @param t Title.
+     * @param l Location.
+     * @param d Description.
+     * @param start Start time in milliseconds.
+     */
     private void sendToExternalCalendar(String t, String l, String d, long start) {
         // יצירת Intent המפעיל את אפליקציית היומן החיצונית (כמו Google Calendar) להוספת אירוע
         Intent intent = new Intent(Intent.ACTION_INSERT)
@@ -276,6 +329,9 @@ public class CalendarActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
+    /**
+     * Explicitly requests notification permission for Android 13 (Tiramisu) and above.
+     */
     private void requestNotificationPermission() {
         // באנדרואיד 13 ומעלה חובה לבקש הרשאת שליחת התראות באופן מפורש
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -285,6 +341,9 @@ public class CalendarActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Creates a notification channel required for displaying reminders on Android 8.0+.
+     */
     private void createNotificationChannel() {
         // יצירת ערוץ התראות כחלק מדרישות ה-API המודרני של אנדרואיד
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

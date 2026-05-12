@@ -12,11 +12,23 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+/**
+ * Entry point of the application.
+ * This activity displays a splash screen and determines the navigation flow
+ * based on the user's authentication status and local persistence settings.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
 public class SplashActivity extends AppCompatActivity {
 
     // אובייקט לשמירת נתונים קטנים מקומית על המכשיר (כמו הגדרת "זכור אותי")
     private SharedPreferences sharedPref;
 
+    /**
+     * Initializes the activity, sets up full-screen layout (EdgeToEdge),
+     * and schedules the user status check after a short delay.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -35,6 +47,10 @@ public class SplashActivity extends AppCompatActivity {
         // אתחול ה-SharedPreferences תחת הקובץ "USER_SETTINGS"
         sharedPref = getSharedPreferences("USER_SETTINGS", MODE_PRIVATE);
 
+        /**
+         * Delays the transition to the next activity by 2000 milliseconds (2 seconds)
+         * to provide visual branding and allow background checks to initialize.
+         */
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -43,6 +59,11 @@ public class SplashActivity extends AppCompatActivity {
         }, 2000);
     }
 
+    /**
+     * Checks if a user is currently logged into Firebase and verifies
+     * the "Stay Logged In" preference from local SharedPreferences.
+     * Redirects to DashboardActivity or LoginOptionsActivity accordingly.
+     */
     private void checkUserStatus() {
         // שליפת הערך הבוליאני המציין אם המשתמש בחר "הישאר מחובר" (ברירת מחדל: false)
         boolean isChecked = sharedPref.getBoolean("stayConnect", false);

@@ -21,13 +21,27 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.List;
 
+/**
+ * The main control center of the application.
+ * This activity displays user statistics and provides navigation to all core features
+ * such as recording, summaries, calendar, and reminders.
+ * @author Noa Zohar(nz2020@bs.amalnet.k12.il)
+ * @version 1.0
+ * @since 22.1.2026
+ */
+
 public class DashboardActivity extends AppCompatActivity {
 
-    // הצהרה על רכיבי ה-UI (TextViews וכפתורי Material Design)
+    /** UI components for displaying user greetings and lecture statistics */
     private TextView tvWelcome, tvStats;
+    /** Navigation buttons for the various application features */
     private MaterialButton btnRecordLesson, btnViewSummaries, btnLessonCalendar,
             btnSmartReminders, btnSearchLesson, btnLogout;
 
+    /**
+     * Initializes the activity, sets up full-screen UI, and triggers data loading.
+     * @param savedInstanceState Bundle containing the activity's previously saved state.
+     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,6 +54,9 @@ public class DashboardActivity extends AppCompatActivity {
         loadUserData();        // משיכת נתוני המשתמש מה-Firebase (שם וסטטיסטיקה)
     }
 
+    /**
+     * Connects UI variables to their respective components defined in the XML layout.
+     */
     private void initViews() {
         // אתחול הרכיבים באמצעות ה-ID שלהם מה-Layout
         tvWelcome = findViewById(R.id.tvWelcome);
@@ -53,6 +70,10 @@ public class DashboardActivity extends AppCompatActivity {
         btnLogout = findViewById(R.id.btnLogout);
     }
 
+    /**
+     * Retrieves the current user's profile and lecture stats from Firebase Realtime Database.
+     * Listens for real-time changes to update the dashboard UI automatically.
+     */
     private void loadUserData() {
         // בדיקה שיש משתמש מחובר ב-Firebase Authentication
         if (refAuth.getCurrentUser() != null) {
@@ -86,6 +107,9 @@ public class DashboardActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Configures click listeners for all buttons to navigate to different activities.
+     */
     private void setupClickListeners() {
         // מעבר בין מסכים באמצעות Intents:
         btnRecordLesson.setOnClickListener(v -> startActivity(new Intent(this, RecordLesson.class)));
@@ -97,6 +121,10 @@ public class DashboardActivity extends AppCompatActivity {
         btnLogout.setOnClickListener(v -> logoutUser());
     }
 
+    /**
+     * Signs the user out of Firebase, clears local login preferences,
+     * and redirects to the login screen while clearing the activity stack.
+     */
     private void logoutUser() {
         // 1. ניתוק המשתמש מ-Firebase Authentication
         refAuth.signOut();
